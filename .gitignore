@@ -1,0 +1,11 @@
+/target
+/.example
+/.env
+/.sqlx
+/.direnv
+/.mte_cache
+/game-layer/assets
+/game-layer/data
+/game-layer/logs
+/game-layer/data-server-config.toml
+/game-layer/game.db

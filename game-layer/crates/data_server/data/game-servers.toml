@@ -1,0 +1,13 @@
+[[servers]]
+id = 1
+name = "Европа - Основной"
+ip = "127.0.0.1"
+port = 7777
+secret = "key_1"
+
+# [[servers]]
+# id = 2
+# name = "Сибирь - Тест"
+# ip = "192.168.1.50"
+# port = 7778
+# secret = "key_2"

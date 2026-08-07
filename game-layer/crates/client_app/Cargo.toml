@@ -1,0 +1,34 @@
+[package]
+name = "client_app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mte_macros = {workspace = true}
+
+lib_io = {workspace = true}
+lib_network = {workspace = true}
+lib_core = {workspace = true}
+lib_ecs = {workspace = true}
+lib_renderer = {workspace = true}
+
+game_lib = {workspace = true}
+
+anyhow = {workspace = true}
+glam = {workspace = true}
+renet = {workspace = true}
+renet_udp = {workspace = true}
+renet_netcode = {workspace = true}
+bitcode = {workspace = true}
+bincode = {workspace = true}
+serde = {workspace = true}
+tokio = {workspace = true}
+futures = {workspace = true}
+memmap2 = {workspace = true}
+
+
+[build-dependencies]
+lib_core = {workspace = true}
+
+bincode = {workspace = true}
+serde = {workspace = true}

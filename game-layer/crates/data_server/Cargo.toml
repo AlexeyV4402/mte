@@ -1,0 +1,26 @@
+[package]
+name = "data_server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lib_network = {workspace = true}
+lib_core = {workspace = true}
+lib_ecs = {workspace = true}
+
+game_lib = {workspace = true}
+
+anyhow = {workspace = true}
+bincode = {workspace = true}
+serde = {workspace = true}
+toml = {workspace = true}
+chacha20poly1305 = {workspace = true}
+tokio = {workspace = true}
+sqlx = {workspace = true}
+bcrypt = {workspace = true}
+rand = {workspace = true}
+num-traits = {workspace = true}
+dashmap = {workspace = true}
+tracing = {workspace = true}
+tracing-subscriber = {workspace = true}
+tracing-appender = {workspace = true}

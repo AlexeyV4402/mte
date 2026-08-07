@@ -1,0 +1,5 @@
+database_url = "sqlite://game.db?mode=rwc"
+listen_address = "127.0.0.1:8081"
+auth_timeout_secs = 5
+server_timeout_secs = 5
+server_toml_path = "/home/AlexeyV/Документы/Projects/Rust/MTE/game-layer/crates/data_server/game-servers.toml"

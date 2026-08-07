@@ -1,0 +1,23 @@
+[package]
+name = "mte_lib_renderer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lib_io = {workspace = true}
+lib_core = {workspace = true}
+mte_macros = {workspace = true}
+
+anyhow = {workspace = true}
+winit = {workspace = true}
+wgpu = {workspace = true}
+chrono = {workspace = true}
+pollster = {workspace = true}
+glam = {workspace = true}
+bytemuck = {workspace = true}
+image = {workspace = true}
+ttf-parser = {workspace = true}
+tokio = {workspace = true}
+gltf = {workspace = true}
+bincode = {workspace = true}
+# env_logger = {worskpace = true}

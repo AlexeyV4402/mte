@@ -1,0 +1,14 @@
+[package]
+name = "mte_lib_core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = {workspace = true}
+glam = {workspace = true}
+tokio = {workspace = true}
+serde = {workspace = true}
+memmap2 = {workspace = true}
+bincode = {workspace = true}
+toml = {workspace = true}
+walkdir = {workspace = true}

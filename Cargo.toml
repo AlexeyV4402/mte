@@ -1,0 +1,88 @@
+[workspace.dependencies]
+lib_core = {package = "mte_lib_core", path = "lib-layer/crates/mte_lib_core"}
+lib_ecs = {package = "mte_lib_ecs", path = "lib-layer/crates/mte_lib_ecs"}
+lib_network = {package = "mte_lib_network", path = "lib-layer/crates/mte_lib_network"}
+lib_io = {package = "mte_lib_io", path = "lib-layer/crates/mte_lib_io"}
+lib_physics = {package = "mte_lib_physics", path = "lib-layer/crates/mte_lib_physics"}
+lib_renderer = {package = "mte_lib_renderer", path = "lib-layer/crates/mte_lib_renderer"}
+lib_audio = {package = "mte_lib_audio", path = "lib-layer/crates/mte_lib_audio"}
+
+game_lib = {path = "game-layer/crates/game_lib"}
+
+mte_macros = {path = "engine-layer/crates/mte_macros"}
+
+winit = "0.30.13"
+wgpu = "29.0.1"
+tokio = { version = "1.50.0", features = ["full"] }
+anyhow = "1.0.102"
+env_logger = "0.11.10"
+pollster = "0.4.0"
+glam = "0.32.1"
+bytemuck = { version = "1.24", features = [ "derive" ] }
+image = {version = '0.25.10', features = ["png", "jpeg"]}
+tobj = "4.0.3"
+chrono = "0.4.44"
+renet = "2.0.0"
+renet_udp = "0.0.2"
+renet_netcode = "2.0.0"
+bitcode = {version = "0.6.9", features = ["glam"]}
+bincode = "1.3.3"
+serde = { version = "1.0", features = ["derive"] }
+rayon = "1.12.0"
+toml = "1.1.2+spec-1.1.0"
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+chacha20poly1305 = "0.10.1"
+rand = "0.8"
+sqlx = { version = "0.8.6", features = [ "runtime-tokio", "sqlite", "macros" ] }
+bcrypt = "0.15.1"
+num-traits = "0.2"
+num-derive = "0.4"
+dashmap = "6.1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+futures = "0.3.32"
+ttf-parser = "0.25.1"
+gltf = { version = "1.4.1", features = ["KHR_texture_transform"] }
+memmap2 = "0.9.10"
+regex = "1.10"
+walkdir = "2.5"
+meshopt = "0.6.2"
+lz4_flex = "0.13.1"
+zstd = "0.13.3"
+basis-universal = "0.3.1"
+infer = "0.19.0"
+metastrip = "0.1"
+ctt = "0.4.0"
+serde_json = "1.0.150"
+
+[workspace]
+members = [
+    # --- GAME LAYER (Игровой функционал) ---
+    "game-layer/crates/client_app",
+    "game-layer/crates/minecraft",
+    "game-layer/crates/game_server",
+    "game-layer/crates/data_server",
+    "game-layer/crates/game_lib",
+    "game-layer/crates/init",
+
+    # --- ENGINE LAYER (Мета-функционал) ---
+    # "engine-layer/crates/mte_core",
+    "engine-layer/crates/mte_macros",
+    "engine-layer/crates/mte_tool",
+
+    # --- LIB LAYER (Общий функционал) ---
+    "lib-layer/crates/mte_lib_core",
+    "lib-layer/crates/mte_lib_ecs",
+    "lib-layer/crates/mte_lib_network",
+    "lib-layer/crates/mte_lib_io",
+    "lib-layer/crates/mte_lib_physics",
+    # "lib-layer/crates/mte_lib_renderer",
+    "lib-layer/crates/mte_lib_audio"
+]
+resolver = "2"
+
+# [profile.release]
+# codegen-units = 1
+# lto = false
+# opt-level = "z"

@@ -1,0 +1,10 @@
+[package]
+name = "mte_lib_io"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = {workspace = true}
+winit = {workspace = true}
+bytemuck = {workspace = true}
+glam = {workspace = true}

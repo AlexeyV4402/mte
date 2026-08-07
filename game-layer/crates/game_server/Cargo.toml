@@ -1,0 +1,24 @@
+[package]
+name = "game_server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lib_network = {workspace = true}
+lib_ecs = {workspace = true}
+
+game_lib = {workspace = true}
+
+anyhow = {workspace = true}
+glam = {workspace = true}
+renet = {workspace = true}
+renet_netcode = {workspace = true}
+bitcode = {workspace = true}
+serde = {workspace = true}
+tokio = {workspace = true}
+chacha20poly1305 = {workspace = true}
+bincode = {workspace = true}
+dashmap = {workspace = true}
+tracing = {workspace = true}
+tracing-subscriber = {workspace = true}
+tracing-appender = {workspace = true}
