@@ -1,5 +1,6 @@
 use crate::dimension::Dimension;
 use crate::raycast::raycast;
+use crate::types::blocks::block::BlockType;
 
 mod chunk;
 mod config;
@@ -15,8 +16,8 @@ use std::time::{Duration, Instant};
 
 use lib_io::user_io::InputState;
 use lib_renderer::context::render_context::RenderContext;
-use lib_renderer::renderer::Renderer;
-use types::{blocks, coordinates};
+use lib_renderer::renderer::block_greedy_renderer::Renderer;
+use types::coordinates;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalPosition;
 use winit::event::{DeviceEvent, DeviceId, MouseButton, WindowEvent};
@@ -100,11 +101,11 @@ impl ApplicationHandler<Renderer> for App {
         if let Some(raycast) = raycast_result {
             if self.input_state.is_mouse_just_pressed(MouseButton::Left) {
                 self.dimension
-                    .set_block(raycast.target_block, blocks::Block::Air);
+                    .set_block(raycast.target_block, BlockType::Air);
             }
             if self.input_state.is_mouse_just_pressed(MouseButton::Right) {
                 self.dimension
-                    .set_block(raycast.previous_block, blocks::Block::Dirt);
+                    .set_block(raycast.previous_block, BlockType::Dirt);
             }
         }
 
@@ -140,7 +141,9 @@ impl ApplicationHandler<Renderer> for App {
                 window
                     .set_cursor_grab(winit::window::CursorGrabMode::Locked)
                     .expect("Не удалось захватить курсор");
-                window.set_cursor_position(LogicalPosition::new(1280.0, 700.0)).expect("msg");
+                window
+                    .set_cursor_position(LogicalPosition::new(1280.0, 700.0))
+                    .expect("msg");
                 // window.set_cursor_visible(true);
                 window.request_redraw();
             }

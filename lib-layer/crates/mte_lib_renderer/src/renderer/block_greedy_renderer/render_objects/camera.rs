@@ -4,7 +4,7 @@ use std::time::Duration;
 use glam::{Mat4, Vec3};
 use lib_io::user_io::InputState;
 use wgpu::util::DeviceExt;
-use wgpu::{BindGroupLayout, Buffer};
+use wgpu::BindGroupLayout;
 use winit::keyboard::KeyCode;
 
 use crate::context::render_context::RenderContext;
@@ -22,8 +22,7 @@ pub struct CameraSystem {
 impl CameraSystem {
     pub fn new(
         render_context: &RenderContext,
-        camera_bind_group_layout: &BindGroupLayout,
-        matrix_buffer: &Buffer,
+        camera_bind_group_layout: &BindGroupLayout
     ) -> Self {
         let gpu_context = &render_context.gpu_contexts[0];
         let config = &render_context.window_contexts[0].config;
@@ -56,10 +55,6 @@ impl CameraSystem {
                     wgpu::BindGroupEntry {
                         binding: 0,
                         resource: camera_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: matrix_buffer.as_entire_binding(),
                     },
                 ],
                 label: Some("camera_bind_group"),

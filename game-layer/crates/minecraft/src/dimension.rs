@@ -1,15 +1,12 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use lib_renderer::renderer::Renderer;
-use lib_renderer::types::Vertex;
-use winit::dpi::LogicalPosition;
+use lib_renderer::renderer::block_greedy_renderer::{types::Vertex, Renderer};
 
-use crate::blocks::Block;
 use crate::chunk::{CHUNK_ARRAY_LEN, CHUNK_SIZE, Chunk};
 use crate::coordinates::{ChunkCoords, GlobalCoords};
-use crate::types::blocks::Block::Air;
-use crate::types::coordinates::{self, GlobalCoordsType, LocalCoords, LocalCoordsType};
+use crate::types::blocks::block::BlockType;
+use crate::types::coordinates::{LocalCoords, LocalCoordsType};
 
 pub struct Dimension {
     chunks: HashMap<ChunkCoords, Chunk>,
@@ -27,7 +24,7 @@ impl Dimension {
         for x in 0..=2 {
             for y in 0..=2 {
                 for z in 0..=2 {
-                    chunks.insert((x, y, z).into(), Chunk::from_block(Block::Dirt));
+                    chunks.insert((x, y, z).into(), Chunk::from_block(BlockType::Dirt));
                     dirty_chunks.push((x, y, z).into());
                 }
             }
@@ -62,7 +59,7 @@ impl Dimension {
     pub fn get_chunk_mut_or_create(&mut self, chunk_coordinates: ChunkCoords) -> &mut Chunk {
         self.chunks
             .entry(chunk_coordinates)
-            .or_insert(Chunk::from_block(Block::Air))
+            .or_insert(Chunk::from_block(BlockType::Air))
     }
 
     fn dirt_chunk(&mut self, chunk_coordinates: ChunkCoords) {
@@ -157,14 +154,14 @@ impl Dimension {
         (vertices, indices)
     }
 
-    pub fn get_block(&self, coords: GlobalCoords) -> Block {
+    pub fn get_block(&self, coords: GlobalCoords) -> BlockType {
         match self.get_chunk(coords.get_chunk()) {
             Some(chunk) => chunk.get_block(coords.get_local()),
-            None => Block::Air,
+            None => BlockType::Air,
         }
     }
 
-    pub fn set_block(&mut self, coords: GlobalCoords, block: Block) {
+    pub fn set_block(&mut self, coords: GlobalCoords, block: BlockType) {
         let chunk_coords = coords.get_chunk();
         let chunk = self.get_chunk_mut_or_create(chunk_coords);
         chunk.set_block(coords.get_local(), block);
@@ -180,7 +177,7 @@ pub fn is_neighbor_blocked(
     nx: LocalCoordsType,
     ny: LocalCoordsType,
     nz: LocalCoordsType,
-    data: &[Block; CHUNK_ARRAY_LEN],
+    data: &[BlockType; CHUNK_ARRAY_LEN],
 ) -> bool {
     if !LocalCoords::from((nx, ny, nz)).in_chunk() {
         return false;
@@ -193,7 +190,7 @@ pub fn check_inner_voxel(
     vertices: &mut Vec<Vertex>,
     indices: &mut Vec<u32>,
     vert_count: &mut u32,
-    data: &[Block; CHUNK_ARRAY_LEN],
+    data: &[BlockType; CHUNK_ARRAY_LEN],
     x: LocalCoordsType,
     y: LocalCoordsType,
     z: LocalCoordsType,

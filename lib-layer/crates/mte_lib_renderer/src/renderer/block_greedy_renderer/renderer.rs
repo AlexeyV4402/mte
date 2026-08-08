@@ -1,14 +1,25 @@
-use std::{fmt, iter};
+use std::iter;
 
 use anyhow::Result;
 use mte_macros::{vfs_include_bytes, vfs_include_str};
 use wgpu::wgt::DrawIndexedIndirectArgs;
 use wgpu::{BindGroup, Buffer, RenderPipeline};
 
+use super::render_objects::camera::CameraSystem;
+use super::types::Vertex;
+use super::consts::{
+    GLOBAL_MATRIX_BUFFER_CAPACITY,
+    GLOBAL_INDEX_BUFFER_CAPACITY,
+    GLOBAL_VERTEX_BUFFER_CAPACITY,
+    GLOBAL_INDIRECT_BUFFER_CAPACITY,
+    GLOBAL_BUFFER_SECTION_COUNT,
+    GLOBAL_BUFFER_VERTEX_PER_SECTION,
+    GLOBAL_BUFFER_INDEX_PER_SECTION,
+    GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY,
+    GLOBAL_INDEX_BUFFER_SECTION_CAPACITY
+};
 use crate::context::render_context::RenderContext;
-use crate::render_objects::camera::CameraSystem;
 use crate::render_objects::texture::{self, Texture};
-use crate::types::Vertex;
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub enum PipelineType {
@@ -28,60 +39,6 @@ pub enum BindGroupType {
     Environment,
 }
 
-// Создаешь обертку и вешаешь на нее derive(Clone, Copy)
-#[derive(Clone, Copy)]
-pub struct DebugDrawArgs(pub DrawIndexedIndirectArgs);
-
-// Вручную реализуешь трейт Debug для своей обертки
-impl fmt::Debug for DebugDrawArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DrawIndexedIndirectArgs")
-            .field("index_count", &self.0.index_count)
-            .field("instance_count", &self.0.instance_count)
-            .field("first_index", &self.0.first_index)
-            .field("base_vertex", &self.0.base_vertex)
-            .field("base_instance", &self.0.first_instance)
-            .finish()
-    }
-}
-
-pub const GLOBAL_BUFFER_SECTION_COUNT: usize = 64;
-
-pub const GLOBAL_BUFFER_INDIRECT_CAPACITY: usize =
-    size_of::<DrawIndexedIndirectArgs>() * GLOBAL_BUFFER_SECTION_COUNT;
-
-pub const GLOBAL_BUFFER_VERTEX_PER_SECTION: u32 = 196608;
-pub const GLOBAL_BUFFER_INDEX_PER_SECTION: u32 =
-    (GLOBAL_BUFFER_VERTEX_PER_SECTION as f32 * 1.5) as u32;
-
-pub const GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY: usize =
-    (size_of::<Vertex>() * GLOBAL_BUFFER_VERTEX_PER_SECTION as usize) as usize;
-pub const GLOBAL_VERTEX_BUFFER_CAPACITY: usize =
-    GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY * GLOBAL_BUFFER_SECTION_COUNT;
-
-const _: () = assert!(
-    GLOBAL_VERTEX_BUFFER_CAPACITY <= 268435456,
-    "Запрещено создание буферов больше 256 МБ"
-);
-
-pub const GLOBAL_INDEX_BUFFER_SECTION_CAPACITY: usize =
-    (size_of::<u32>() * GLOBAL_BUFFER_INDEX_PER_SECTION as usize) as usize;
-pub const GLOBAL_INDEX_BUFFER_CAPACITY: usize =
-    GLOBAL_INDEX_BUFFER_SECTION_CAPACITY * GLOBAL_BUFFER_SECTION_COUNT;
-
-const _: () = assert!(
-    GLOBAL_INDEX_BUFFER_CAPACITY <= 268435456,
-    "Запрещено создание буферов больше 256 МБ"
-);
-
-const GLOBAL_MATRIX_BUFFER_CAPACITY: usize =
-    GLOBAL_BUFFER_SECTION_COUNT as usize * std::mem::size_of::<[[f32; 4]; 4]>();
-
-const _: () = assert!(
-    GLOBAL_MATRIX_BUFFER_CAPACITY <= 268435456,
-    "Запрещено создание буферов больше 256 МБ"
-);
-
 pub struct Renderer {
     pub render_context: RenderContext,
     pipelines: [RenderPipeline; 1],
@@ -89,12 +46,14 @@ pub struct Renderer {
     pub diffuse_bind_group: BindGroup,
     pub camera_system: CameraSystem,
 
+    pub model_matrix_bind_group: BindGroup,
+
     pub gpu_indexed_indirect_buffer: Buffer,
     pub cpu_indexed_indirect_buffer: Vec<DrawIndexedIndirectArgs>,
 
     pub global_index_buffer: Buffer,
     pub global_vertex_buffer: Buffer,
-    pub global_matrix_buffer: Buffer,
+    pub global_model_matrix_buffer: Buffer,
 
     pub global_buffer_free_slots: Vec<usize>,
 }
@@ -183,13 +142,20 @@ impl Renderer {
                                 min_binding_size: None,
                             },
                             count: None,
-                        },
+                        }
+                    ],
+                    label: Some("camera_bind_group_layout"),
+                });
+
+        let model_matrix_bind_group_layout =
+            gpu_context
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[
                         wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            // КРИТИЧЕСКИ ОШИБКА БЫЛА ТУТ: Обязательно добавляем VERTEX!
+                            binding: 0,
                             visibility: wgpu::ShaderStages::VERTEX,
                             ty: wgpu::BindingType::Buffer {
-                                // Указываем, что это Storage буфер только для чтения (read)
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
                                 has_dynamic_offset: false,
                                 min_binding_size: None,
@@ -197,8 +163,9 @@ impl Renderer {
                             count: None,
                         },
                     ],
-                    label: Some("camera_bind_group_layout"),
+                    label: Some("model_matrix_bind_group_layout"),
                 });
+
 
         let depth_texture = Texture::create_depth_texture(
             &gpu_context.device,
@@ -206,17 +173,29 @@ impl Renderer {
             "depth_texture",
         );
 
-        let global_matrix_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
+        let global_model_matrix_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Global Matrix Buffer"),
             size: GLOBAL_MATRIX_BUFFER_CAPACITY as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
+        let model_matrix_bind_group = gpu_context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &model_matrix_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: global_model_matrix_buffer.as_entire_binding(),
+                    },
+                ],
+                label: Some("model_matrix_bind_group"),
+            });
+
         let camera_system = CameraSystem::new(
             &render_context,
-            &camera_bind_group_layout,
-            &global_matrix_buffer,
+            &camera_bind_group_layout
         );
 
         let global_vertex_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
@@ -240,7 +219,7 @@ impl Renderer {
             gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Indirect Buffer"),
                 usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
-                size: GLOBAL_BUFFER_INDIRECT_CAPACITY as u64,
+                size: GLOBAL_INDIRECT_BUFFER_CAPACITY as u64,
                 mapped_at_creation: false,
             });
 
@@ -253,6 +232,7 @@ impl Renderer {
                     bind_group_layouts: &[
                         Some(&texture_bind_group_layout),
                         Some(&camera_bind_group_layout),
+                        Some(&model_matrix_bind_group_layout)
                     ],
                     immediate_size: 0,
                 });
@@ -310,13 +290,14 @@ impl Renderer {
             pipelines: [render_pipeline],
             depth_texture,
             diffuse_bind_group: diffuse_bind_group,
+            model_matrix_bind_group,
             camera_system,
             gpu_indexed_indirect_buffer,
             cpu_indexed_indirect_buffer,
             global_index_buffer,
             global_vertex_buffer,
             global_buffer_free_slots: (0..GLOBAL_BUFFER_SECTION_COUNT).collect(),
-            global_matrix_buffer,
+            global_model_matrix_buffer,
         })
     }
 
@@ -442,7 +423,7 @@ impl Renderer {
         );
 
         gpu_context.queue.write_buffer(
-            &self.global_matrix_buffer,
+            &self.global_model_matrix_buffer,
             matrix_offset_bytes,
             bytemuck::cast_slice(&[model_matrix]),
         );
@@ -554,8 +535,10 @@ impl Renderer {
                 });
 
                 render_pass.set_pipeline(&self.pipelines[0]);
+                
                 render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
                 render_pass.set_bind_group(1, &self.camera_system.bind_group, &[]);
+                render_pass.set_bind_group(2, &self.model_matrix_bind_group, &[]);
 
                 render_pass.set_vertex_buffer(0, self.global_vertex_buffer.slice(..));
                 render_pass.set_index_buffer(

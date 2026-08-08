@@ -4,7 +4,6 @@ pub mod loader;
 pub mod pipelines;
 pub mod render_objects;
 pub mod renderer;
-pub mod types;
 // pub mod scene;
 // pub mod texture;
 // pub mod hdr;

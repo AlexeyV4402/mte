@@ -5,7 +5,7 @@ use lib_core::fs::os::get_workspace_dir_from;
 use lib_core::fs::vfs::builder::init_builder_state;
 use proc_macro::TokenStream;
 use syn::parse::Parser;
-use syn::{LitStr, parse_macro_input};
+use syn::{Expr, Fields, ItemEnum, Lit, LitStr, parse_macro_input};
 
 use crate::find_entry::find_vfs_entry;
 
@@ -153,6 +153,67 @@ pub fn vfs_read_all(input: TokenStream) -> TokenStream {
         }
         Err(compile_error) => proc_macro::TokenStream::from(compile_error.to_compile_error()),
     }
+}
+
+#[proc_macro_attribute]
+pub fn fill_to_4096(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Парсим ваш enum
+    let mut input_enum = parse_macro_input!(item as ItemEnum);
+
+    let mut max_id = 0u16;
+
+    // Проверяем существующие варианты, чтобы узнать текущий максимальный ID
+    for variant in &input_enum.variants {
+        println!("dddddddddddddd 1: {}", max_id);
+        if let Some((_, Expr::Lit(expr_lit))) = &variant.discriminant {
+            println!("dddddddddddddd 2: {}", max_id);
+            if let Lit::Int(lit_int) = &expr_lit.lit {
+                println!("dddddddddddddd 3: {}", max_id);
+                if let Ok(val) = lit_int.base10_parse::<u16>() {
+                    println!("dddddddddddddd 4: {}", max_id);
+                    if val > max_id {
+                        max_id = val;
+                        println!("dddddddddddddd 5: {}", max_id);
+                    }
+                }
+            }
+        }
+    }
+
+    // Если в enum уже есть блоки, резервировать начинаем со следующего ID
+    let start_id = if input_enum.variants.is_empty() {
+        0
+    } else {
+        max_id + 1
+    };
+
+    // Генерируем скрытые варианты _ReservedX от start_id до 4095
+    for id in start_id..4096 {
+        let name = format!("_Reserved{}", id);
+        let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+
+        let lit = syn::LitInt::new(&id.to_string(), proc_macro2::Span::call_site());
+        let discriminant: Expr = syn::parse2(quote::quote! { #lit }).unwrap();
+
+        // ИСПРАВЛЕНИЕ: Парсим атрибут через parse_outer
+        let attrs = syn::Attribute::parse_outer
+            .parse2(quote::quote! { #[allow(dead_code)] })
+            .unwrap();
+
+        let new_variant = syn::Variant {
+            attrs, // Передаем вектор атрибутов напрямую
+            ident,
+            fields: Fields::Unit,
+            discriminant: Some((syn::token::Eq::default(), discriminant)),
+        };
+
+        input_enum.variants.push(new_variant);
+    }
+
+    // Возвращаем измененный enum обратно в компилятор
+    TokenStream::from(quote::quote! {
+        #input_enum
+    })
 }
 
 // #[proc_macro]
