@@ -4,6 +4,7 @@ use winit::window::Window;
 
 use super::gpu_context::GpuContext;
 use super::window_context::WindowContext;
+use crate::renderer::block_grid_renderer::consts::MAX_BUFFER_SIZE;
 
 pub struct RenderContext {
     pub gpu_contexts: [GpuContext; 1],
@@ -38,10 +39,11 @@ impl RenderContext {
                 // Активируем необходимые расширения
                 required_features: wgpu::Features::TEXTURE_BINDING_ARRAY
                     | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
-                    | wgpu::Features::INDIRECT_FIRST_INSTANCE,
+                    | wgpu::Features::INDIRECT_FIRST_INSTANCE, // | wgpu::Features::POLYGON_MODE_LINE
                 required_limits: wgpu::Limits {
                     // Увеличиваем лимит на количество текстур в одном BindGroup
                     max_bindings_per_bind_group: 1024,
+                    max_buffer_size: MAX_BUFFER_SIZE,
                     ..wgpu::Limits::default()
                 },
                 ..Default::default()

@@ -30,9 +30,11 @@ dashmap = {workspace = true}
 
 winit = {workspace = true}
 pollster = {workspace = true}
+rustc-hash = {workspace = true}
 
 [build-dependencies]
 lib_core = {workspace = true}
-
-bincode = {workspace = true}
-serde = {workspace = true}
+mte_macros = {workspace = true}
+image = {workspace = true}
+# bincode = {workspace = true}
+# serde = {workspace = true}

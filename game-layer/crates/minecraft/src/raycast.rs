@@ -1,5 +1,5 @@
+use crate::coordinates::core::GlobalCoords;
 use crate::dimension::Dimension;
-use crate::types::coordinates::GlobalCoords;
 
 pub struct RaycastResult {
     /// Глобальные координаты блока, в который упёрся луч (чтобы сломать)
@@ -75,7 +75,11 @@ pub fn raycast(
     while current_distance < max_distance {
         // Проверяем, твердый ли блок в текущей ячейке
         let current_coords = GlobalCoords::from((cx, cy, cz));
-        if dimension.get_block(current_coords.clone()).is_solid() {
+        if dimension
+            .get_block(current_coords.clone())
+            .get_type()
+            .is_solid()
+        {
             return Some(RaycastResult {
                 target_block: current_coords,
                 previous_block: GlobalCoords::from((prev_x, prev_y, prev_z)),

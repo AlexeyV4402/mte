@@ -2,24 +2,13 @@ use std::iter;
 
 use anyhow::Result;
 use mte_macros::{vfs_include_bytes, vfs_include_str};
-use wgpu::wgt::DrawIndexedIndirectArgs;
-use wgpu::{BindGroup, Buffer, RenderPipeline};
+use wgpu::{BindGroup, RenderPipeline};
 
 use super::render_objects::camera::CameraSystem;
 use super::types::Vertex;
-use super::consts::{
-    GLOBAL_MATRIX_BUFFER_CAPACITY,
-    GLOBAL_INDEX_BUFFER_CAPACITY,
-    GLOBAL_VERTEX_BUFFER_CAPACITY,
-    GLOBAL_INDIRECT_BUFFER_CAPACITY,
-    GLOBAL_BUFFER_SECTION_COUNT,
-    GLOBAL_BUFFER_VERTEX_PER_SECTION,
-    GLOBAL_BUFFER_INDEX_PER_SECTION,
-    GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY,
-    GLOBAL_INDEX_BUFFER_SECTION_CAPACITY
-};
 use crate::context::render_context::RenderContext;
-use crate::render_objects::texture::{self, Texture};
+use crate::render_objects::texture::Texture;
+use crate::renderer::block_grid_renderer::buffer_manager::BufferManager;
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub enum PipelineType {
@@ -41,21 +30,18 @@ pub enum BindGroupType {
 
 pub struct Renderer {
     pub render_context: RenderContext,
+
     pipelines: [RenderPipeline; 1],
+
     depth_texture: Texture,
-    pub diffuse_bind_group: BindGroup,
-    pub camera_system: CameraSystem,
+
+    pub texture_bind_group: BindGroup,
 
     pub model_matrix_bind_group: BindGroup,
 
-    pub gpu_indexed_indirect_buffer: Buffer,
-    pub cpu_indexed_indirect_buffer: Vec<DrawIndexedIndirectArgs>,
+    pub camera_system: CameraSystem,
 
-    pub global_index_buffer: Buffer,
-    pub global_vertex_buffer: Buffer,
-    pub global_model_matrix_buffer: Buffer,
-
-    pub global_buffer_free_slots: Vec<usize>,
+    pub buffer_manager: BufferManager,
 }
 
 impl Renderer {
@@ -63,15 +49,36 @@ impl Renderer {
         let gpu_context = &render_context.gpu_contexts[0];
         let window_context = &render_context.window_contexts[0];
 
+        let buffer_manager = BufferManager::new(gpu_context);
+
         // Загрузка основного шейдера
         let shader_code_1 =
-            vfs_include_str!("workspace://game-layer/assets/minecraft/shaders/opaque.wgsl");
+            vfs_include_str!("workspace://game-layer/assets/minecraft/shaders/opaque_new.wgsl");
         let shader = gpu_context
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("Shader"),
                 source: wgpu::ShaderSource::Wgsl(shader_code_1.into()),
             });
+
+        let texture_sampler = gpu_context.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Voxel Block Sampler"),
+            // Включаем бесконечный повтор текстуры по всем осям координат
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            // Включаем Nearest-фильтрацию для сохранения четкого пиксель-арта
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            // Настройка мипмаппинга (Nearest убирает размытие блоков на расстоянии)
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            // Остальные параметры оставляем дефолтными
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 32.0,
+            compare: None,
+            anisotropy_clamp: 1,
+            border_color: None,
+        });
 
         let texture_bind_group_layout =
             gpu_context
@@ -83,7 +90,7 @@ impl Renderer {
                             visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Texture {
                                 multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2,
+                                view_dimension: wgpu::TextureViewDimension::D2Array,
                                 sample_type: wgpu::TextureSampleType::Float { filterable: true },
                             },
                             count: None,
@@ -98,52 +105,45 @@ impl Renderer {
                     label: Some("texture_bind_group_layout"),
                 });
 
-        let diffuse_bytes = vfs_include_bytes!(
-            "workspace://game-layer/assets/minecraft/textures/fasn-kukuruza.jpg"
-        );
-
-        let diffuse_texture = texture::Texture::from_bytes(
+        let (_texture, texture_view) = init_texture_array(
             &gpu_context.device,
             &gpu_context.queue,
-            diffuse_bytes,
-            "fasn-kukuruza.jpg",
-            false,
-        )
-        .unwrap();
+            vfs_include_bytes!("workspace://game-layer/crates/minecraft/content/blocks.pck"),
+            16,
+            6,
+        );
 
-        let diffuse_bind_group = gpu_context
+        let texture_bind_group = gpu_context
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &texture_bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&diffuse_texture.view), // CHANGED!
+                        resource: wgpu::BindingResource::TextureView(&texture_view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler), // CHANGED!
+                        resource: wgpu::BindingResource::Sampler(&texture_sampler),
                     },
                 ],
-                label: Some("diffuse_bind_group"),
+                label: Some("texture_bind_group"),
             });
 
         let camera_bind_group_layout =
             gpu_context
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::VERTEX,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        }
-                    ],
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
                     label: Some("camera_bind_group_layout"),
                 });
 
@@ -151,21 +151,18 @@ impl Renderer {
             gpu_context
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::VERTEX,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
                         },
-                    ],
+                        count: None,
+                    }],
                     label: Some("model_matrix_bind_group_layout"),
                 });
-
 
         let depth_texture = Texture::create_depth_texture(
             &gpu_context.device,
@@ -173,55 +170,21 @@ impl Renderer {
             "depth_texture",
         );
 
-        let global_model_matrix_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Global Matrix Buffer"),
-            size: GLOBAL_MATRIX_BUFFER_CAPACITY as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let model_matrix_bind_group = gpu_context
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &model_matrix_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
+        let model_matrix_bind_group =
+            gpu_context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &model_matrix_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: global_model_matrix_buffer.as_entire_binding(),
-                    },
-                ],
-                label: Some("model_matrix_bind_group"),
-            });
+                        resource: buffer_manager
+                            .get_global_model_matrix_buffer()
+                            .as_entire_binding(),
+                    }],
+                    label: Some("model_matrix_bind_group"),
+                });
 
-        let camera_system = CameraSystem::new(
-            &render_context,
-            &camera_bind_group_layout
-        );
-
-        let global_vertex_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Vertex Buffer"),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            size: GLOBAL_VERTEX_BUFFER_CAPACITY as u64,
-            mapped_at_creation: false,
-        });
-
-        let global_index_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Index Buffer"),
-            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            size: GLOBAL_INDEX_BUFFER_CAPACITY as u64,
-            mapped_at_creation: false,
-        });
-
-        let cpu_indexed_indirect_buffer: Vec<DrawIndexedIndirectArgs> =
-            vec![DrawIndexedIndirectArgs::default(); GLOBAL_BUFFER_SECTION_COUNT];
-
-        let gpu_indexed_indirect_buffer =
-            gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Indirect Buffer"),
-                usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
-                size: GLOBAL_INDIRECT_BUFFER_CAPACITY as u64,
-                mapped_at_creation: false,
-            });
+        let camera_system = CameraSystem::new(&render_context, &camera_bind_group_layout);
 
         // Создание раскладки конвеера
         let render_pipeline_layout =
@@ -232,7 +195,7 @@ impl Renderer {
                     bind_group_layouts: &[
                         Some(&texture_bind_group_layout),
                         Some(&camera_bind_group_layout),
-                        Some(&model_matrix_bind_group_layout)
+                        Some(&model_matrix_bind_group_layout),
                     ],
                     immediate_size: 0,
                 });
@@ -265,6 +228,7 @@ impl Renderer {
                         front_face: wgpu::FrontFace::Ccw,
                         cull_mode: Some(wgpu::Face::Back),
                         // cull_mode: None,
+                        // polygon_mode: wgpu::PolygonMode::Line,
                         polygon_mode: wgpu::PolygonMode::Fill,
                         unclipped_depth: false,
                         conservative: false,
@@ -289,77 +253,10 @@ impl Renderer {
             render_context,
             pipelines: [render_pipeline],
             depth_texture,
-            diffuse_bind_group: diffuse_bind_group,
+            texture_bind_group,
             model_matrix_bind_group,
             camera_system,
-            gpu_indexed_indirect_buffer,
-            cpu_indexed_indirect_buffer,
-            global_index_buffer,
-            global_vertex_buffer,
-            global_buffer_free_slots: (0..GLOBAL_BUFFER_SECTION_COUNT).collect(),
-            global_model_matrix_buffer,
-        })
-    }
-
-    pub fn create_render_pipeline(
-        device: &wgpu::Device,
-        layout: &wgpu::PipelineLayout,
-        color_format: wgpu::TextureFormat,
-        depth_format: Option<wgpu::TextureFormat>,
-        vertex_layouts: &[wgpu::VertexBufferLayout],
-        topology: wgpu::PrimitiveTopology, // NEW!
-        shader: wgpu::ShaderModuleDescriptor,
-    ) -> wgpu::RenderPipeline {
-        let shader = device.create_shader_module(shader);
-
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(&format!("{:?}", shader)),
-            layout: Some(layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: vertex_layouts,
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology, // NEW!
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                // cull_mode: None,
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
-                unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
-                conservative: false,
-            },
-            depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
-                format,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual), // UDPATED!
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            // If the pipeline will be used with a multiview render pass, this
-            // tells wgpu to render to just specific texture layers.
-            multiview_mask: None,
-            cache: None,
+            buffer_manager,
         })
     }
 
@@ -387,81 +284,16 @@ impl Renderer {
         mesh: (Vec<Vertex>, Vec<u32>),
         model_matrix: [[f32; 4]; 4],
     ) -> anyhow::Result<usize> {
-        let gpu_context = &self.render_context.gpu_contexts[0];
-        if mesh.0.len() > GLOBAL_BUFFER_VERTEX_PER_SECTION as usize
-            || mesh.1.len() > GLOBAL_BUFFER_INDEX_PER_SECTION as usize
-        {
-            return Err(anyhow::anyhow!(
-                "{} вершин дано;\n{} вершин допустимо;\n{} индексов дано;\n{} индексов допустимо;",
-                mesh.0.len(),
-                GLOBAL_BUFFER_VERTEX_PER_SECTION,
-                mesh.1.len(),
-                GLOBAL_BUFFER_INDEX_PER_SECTION
-            ));
-        }
-
-        let free = self
-            .global_buffer_free_slots
-            // .remove(0);
-            .pop()
-            .ok_or(anyhow::anyhow!("Нет свободных слотов в VRAM"))?;
-
-        let vertex_offset_bytes = (free * GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY) as u64;
-        let index_offset_bytes = (free * GLOBAL_INDEX_BUFFER_SECTION_CAPACITY) as u64;
-        let matrix_offset_bytes = free as u64 * std::mem::size_of::<[[f32; 4]; 4]>() as u64;
-
-        gpu_context.queue.write_buffer(
-            &self.global_vertex_buffer,
-            vertex_offset_bytes,
-            bytemuck::cast_slice(&mesh.0),
-        );
-
-        gpu_context.queue.write_buffer(
-            &self.global_index_buffer,
-            index_offset_bytes,
-            bytemuck::cast_slice(&mesh.1),
-        );
-
-        gpu_context.queue.write_buffer(
-            &self.global_model_matrix_buffer,
-            matrix_offset_bytes,
-            bytemuck::cast_slice(&[model_matrix]),
-        );
-
-        self.cpu_indexed_indirect_buffer[free] = DrawIndexedIndirectArgs {
-            index_count: mesh.1.len() as u32,
-            instance_count: 1, // Рисуем 1 экземпляр чанка
-            first_index: free as u32 * GLOBAL_BUFFER_INDEX_PER_SECTION, // С какого индекса в штуках начинать рендер [7]
-            base_vertex: (free as u32 * GLOBAL_BUFFER_VERTEX_PER_SECTION) as i32, // Какое число прибавлять к индексам на GPU [5, 8]
-            first_instance: free as u32,
-        };
-
-        Ok(free)
+        self.buffer_manager.load_mesh(mesh.0, mesh.1, model_matrix)
     }
 
     pub fn unload_mesh(&mut self, slot_id: usize) {
-        self.global_buffer_free_slots.push(slot_id);
-
-        self.cpu_indexed_indirect_buffer[slot_id] = DrawIndexedIndirectArgs {
-            index_count: 0,    // Видеокарта увидит 0 и мгновенно пропустит этот слот
-            instance_count: 0, // На всякий случай зануляем и инстансы
-            first_index: 0,
-            base_vertex: 0,
-            first_instance: 0,
-        };
+        self.buffer_manager.unload_mesh(slot_id);
     }
 
     pub fn render(&mut self) -> anyhow::Result<()> {
         let gpu_context = &self.render_context.gpu_contexts[0];
         let window_context = &self.render_context.window_contexts[0];
-
-        gpu_context.queue.write_buffer(
-            &self.gpu_indexed_indirect_buffer,
-            0,
-            bytemuck::cast_slice(&self.cpu_indexed_indirect_buffer),
-        );
-
-        // window_context.window.request_redraw();
 
         if !window_context.is_surface_configured {
             return Ok(());
@@ -504,6 +336,9 @@ impl Renderer {
                         label: Some("Render Encoder"),
                     });
 
+            self.buffer_manager
+                .prepare_buffers(&gpu_context.queue, &mut encoder);
+
             {
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Render Pass"),
@@ -534,22 +369,25 @@ impl Renderer {
                     multiview_mask: None,
                 });
 
+                // encoder.clear_texture(texture, subresource_range);
+
                 render_pass.set_pipeline(&self.pipelines[0]);
-                
-                render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+
+                render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
                 render_pass.set_bind_group(1, &self.camera_system.bind_group, &[]);
                 render_pass.set_bind_group(2, &self.model_matrix_bind_group, &[]);
 
-                render_pass.set_vertex_buffer(0, self.global_vertex_buffer.slice(..));
+                render_pass
+                    .set_vertex_buffer(0, self.buffer_manager.get_global_vertex_buffer().slice(..));
                 render_pass.set_index_buffer(
-                    self.global_index_buffer.slice(..),
+                    self.buffer_manager.get_global_index_buffer().slice(..),
                     wgpu::IndexFormat::Uint32,
                 );
 
                 render_pass.multi_draw_indexed_indirect(
-                    &self.gpu_indexed_indirect_buffer,
+                    &self.buffer_manager.gpu_indexed_indirect_buffer,
                     0,
-                    self.cpu_indexed_indirect_buffer.len() as u32,
+                    self.buffer_manager.cpu_indexed_indirect_buffer.len() as u32,
                 );
             }
 
@@ -564,4 +402,68 @@ impl Renderer {
 
         Ok(())
     }
+}
+
+pub fn init_texture_array(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    rgba_bytes: &[u8],
+    tile_size: u32,
+    layer_count: u32,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    // 1. Создаем текстуру нужного объема
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Voxel Texture Array"),
+        size: wgpu::Extent3d {
+            width: tile_size,
+            height: tile_size,
+            depth_or_array_layers: layer_count, // КОЛИЧЕСТВО СЛОЕВ (ТЕКСТУР)
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    // 2. Заливаем наш плоский массив байт прямо в GPU
+    queue.write_texture(
+        // В современных версиях wgpu структура называется TexelCopyTextureInfo
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        rgba_bytes,
+        // Настройка разметки данных в памяти
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            // Сколько байт занимает одна строка пикселей (ширина * 4 байта RGBA)
+            bytes_per_row: Some(tile_size * 4),
+            // Сколько байт занимает весь один слой (высота)
+            rows_per_image: Some(tile_size),
+        },
+        wgpu::Extent3d {
+            width: tile_size,
+            height: tile_size,
+            depth_or_array_layers: layer_count,
+        },
+    );
+
+    // 3. ВАЖНО: Создаем правильный View с типом D2Array
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some("Voxel Texture Array View"),
+        format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+        dimension: Some(wgpu::TextureViewDimension::D2Array), // УКАЗЫВАЕМ, ЧТО ЭТО МАССИВ
+        aspect: wgpu::TextureAspect::All,
+        base_mip_level: 0,
+        mip_level_count: None,
+        base_array_layer: 0,
+        array_layer_count: Some(layer_count),
+        usage: None,
+    });
+
+    (texture, view)
 }

@@ -1,124 +1,80 @@
-use lib_renderer::renderer::block_greedy_renderer::types::Vertex;
+use lib_renderer::renderer::block_grid_renderer::types::Vertex;
 
-use crate::coordinates::LocalCoords;
-use crate::types::blocks::block::{Block, BlockType, PrerenderBlock};
+use crate::types::blocks::block::{Block, BlockType};
+use crate::types::coordinates::core::{InternalCoords, LocalCoords};
+use crate::utils::mesher::{generate_mesh, into_prerender_array};
 
 pub type ChunkAssociatedType = u32;
 pub const CHUNK_SIZE: u32 = 32;
-pub const CHUNK_ARRAY_LEN: usize = (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE) as usize;
+pub const CHUNK_SIZE_WITH_PADDING: u32 = CHUNK_SIZE + 2;
+pub const CHUNK_ARRAY_LEN: usize =
+    (CHUNK_SIZE_WITH_PADDING * CHUNK_SIZE_WITH_PADDING * CHUNK_SIZE_WITH_PADDING) as usize;
+
+pub const VISIBLE_SIZE_RANGE: std::ops::RangeInclusive<u32> = 0..=(CHUNK_SIZE - 1);
+pub const VIRT_SIZE_RANGE: std::ops::RangeInclusive<u32> = 0..=(CHUNK_SIZE + 1);
 
 const _: () = assert!(CHUNK_SIZE == 32, "Код рассчитан на размер чанка 32x32x32");
 
 pub struct Chunk {
-    pub data: [BlockType; CHUNK_ARRAY_LEN],
+    pub data: [Block; CHUNK_ARRAY_LEN],
     pub vram_slot_id: Option<usize>,
 }
 
 impl Chunk {
-    pub fn from_block(block: BlockType) -> Self {
+    pub fn air() -> Self {
         Self {
-            data: [block; CHUNK_ARRAY_LEN],
+            data: [Block::air(); CHUNK_ARRAY_LEN],
             vram_slot_id: None,
         }
     }
 
-    pub fn set_block(&mut self, coords: LocalCoords, block: BlockType) {
+    pub fn from_block(block: Block) -> Self {
+        let mut data = [Block::air(); CHUNK_ARRAY_LEN];
+        for y in VISIBLE_SIZE_RANGE {
+            for z in VISIBLE_SIZE_RANGE {
+                for x in VISIBLE_SIZE_RANGE {
+                    data[usize::from(LocalCoords::from((x, y, z)))] = block;
+                }
+            }
+        }
+        Self {
+            data,
+            vram_slot_id: None,
+        }
+    }
+
+    pub fn from_block_as_grid(block: Block, grid_step: u32) -> Self {
+        let mut data = [Block::air(); CHUNK_ARRAY_LEN];
+
+        for y in VISIBLE_SIZE_RANGE {
+            for z in VISIBLE_SIZE_RANGE {
+                for x in VISIBLE_SIZE_RANGE {
+                    if x % grid_step == 0 && y % grid_step == 0 && z % grid_step == 0 {
+                        data[usize::from(LocalCoords::from((x, y, z)))] = block;
+                    }
+                }
+            }
+        }
+        Self {
+            data,
+            vram_slot_id: None,
+        }
+    }
+
+    pub fn set_block(&mut self, coords: LocalCoords, block: Block) {
         self.data[usize::from(coords)] = block
     }
 
-    pub fn get_block(&self, coords: LocalCoords) -> BlockType {
+    pub fn set_block_raw(&mut self, internal_coords: InternalCoords, block: Block) {
+        self.data[usize::from(internal_coords)] = block;
+    }
+
+    pub fn get_block(&self, coords: LocalCoords) -> Block {
         self.data[usize::from(coords)]
     }
-}
 
-pub fn into_new_array(data: &[BlockType; CHUNK_ARRAY_LEN]) -> [Block; CHUNK_ARRAY_LEN] {
-    let mut result = [Block::default(); CHUNK_ARRAY_LEN];
-    for (i, block_type) in data.iter().enumerate() {
-        result[i] = Block::from_type(block_type.clone());
+    pub fn get_mesh(&self) -> (Vec<Vertex>, Vec<u32>) {
+        let prerender_arr = into_prerender_array(&self.data);
+        generate_mesh(&prerender_arr)
     }
-    result
-}
-
-pub fn into_prerender_array(data: &[Block; CHUNK_ARRAY_LEN]) -> [PrerenderBlock; CHUNK_ARRAY_LEN] {
-    let mut result = [PrerenderBlock::default(); CHUNK_ARRAY_LEN];
-    for (i, block) in data.iter().enumerate() {
-        result[i] = PrerenderBlock::from_block(block.clone());
-    }
-    result
-}
-
-pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> (Vec<Vertex>, Vec<u32>) {
-    const C_SIZE: usize = CHUNK_SIZE as usize;
-    let mut x_layers = [[0u32; C_SIZE]; C_SIZE];
-    let mut y_layers = [[0u32; C_SIZE]; C_SIZE];
-    let mut z_layers = [[0u32; C_SIZE]; C_SIZE];
-
-    let mut current_index = 0;
-
-    for y in 0..CHUNK_SIZE {
-        for z in 0..CHUNK_SIZE {
-            let mut y_mask = 0u32;
-            let mut z_mask = 0u32;
-            for x in 0..CHUNK_SIZE {
-                let is_solid = data[current_index].get_type().is_solid();
-                current_index += 1;
-
-                if is_solid {
-                    // Маска для осей, где строка — это направление X
-                    // Устанавливаем x-ый бит в слое y, строке z
-                    y_mask |= 1 << x;
-                    // Маска для третьей оси (например, вид сбоку)
-                    z_mask |= 1 << x;
-
-                    // Маска для осей, где строка — это направление Z
-                    // Устанавливаем z-ый бит в слое y, строке x
-                    // (Обрати внимание, как меняются индексы, чтобы повернуть плоскость)
-                    x_layers[x as usize][y as usize] |= 1 << z;
-                }
-            }
-            y_layers[y as usize][z as usize] = y_mask;
-            z_layers[z as usize][y as usize] = z_mask;
-        }
-    }
-
-    let vertices: Vec<Vertex> = Vec::new();
-    let indices: Vec<u32> = Vec::new();
-
-    for y in 0..(CHUNK_SIZE - 1) {
-        for z in 0..CHUNK_SIZE {
-            let row_now = y_layers[y as usize][z as usize];
-            let row_above = y_layers[(y + 1) as usize][z as usize];
-
-            // Находим, где блок есть, а сверху пусто
-            let mut visible_faces = row_now & !row_above;
-
-            if visible_faces != 0 {
-                while visible_faces != 0 {
-                    // Находим индекс первой единицы (начало полигона по оси X)
-                    let start_x = visible_faces.trailing_zeros();
-
-                    // Находим длину цепочки единиц (ширину полигона по оси X)
-                    let length = (visible_faces >> start_x).trailing_ones();
-
-                    // КООРДИНАТЫ ГОТОВОГО ОТРЕЗКА:
-                    // Начало: X = start_x, Y = y + 1, Z = z
-                    // Длина по оси X = length
-
-                    println!(
-                        "Верхняя грань куба: X_start: {}, Y: {}, Z: {}, Ширина_X: {}",
-                        start_x,
-                        y + 1,
-                        z,
-                        length
-                    );
-
-                    // Стираем обработанный кусок из visible_faces
-                    let mask_to_clear = ((1 << length) - 1) << start_x;
-                    visible_faces &= !mask_to_clear;
-                }
-            };
-        }
-    }
-
-    (vertices, indices)
 }

@@ -41,7 +41,7 @@ pub fn vpath(input: TokenStream) -> TokenStream {
                 .collect();
             let expanded = quote::quote! {
                 {
-                    [#(#components),*].iter().collect::<PathBuf>()
+                    [#(#components),*].iter().collect::<std::path::PathBuf>()
                 }
             };
             proc_macro::TokenStream::from(expanded)
@@ -80,7 +80,7 @@ pub fn vpath_unchecked(input: TokenStream) -> TokenStream {
                 .collect();
             let expanded = quote::quote! {
                 {
-                    [#(#components),*].iter().collect::<PathBuf>()
+                    [#(#components),*].iter().collect::<std::path::PathBuf>()
                 }
             };
             proc_macro::TokenStream::from(expanded)
@@ -164,16 +164,11 @@ pub fn fill_to_4096(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Проверяем существующие варианты, чтобы узнать текущий максимальный ID
     for variant in &input_enum.variants {
-        println!("dddddddddddddd 1: {}", max_id);
         if let Some((_, Expr::Lit(expr_lit))) = &variant.discriminant {
-            println!("dddddddddddddd 2: {}", max_id);
             if let Lit::Int(lit_int) = &expr_lit.lit {
-                println!("dddddddddddddd 3: {}", max_id);
                 if let Ok(val) = lit_int.base10_parse::<u16>() {
-                    println!("dddddddddddddd 4: {}", max_id);
                     if val > max_id {
                         max_id = val;
-                        println!("dddddddddddddd 5: {}", max_id);
                     }
                 }
             }

@@ -90,6 +90,10 @@ impl Block {
         unsafe { std::mem::transmute(block_id) }
     }
 
+    pub fn air() -> Self {
+        Self::from_type(BlockType::Air)
+    }
+
     pub fn get_facing(self) -> Facing {
         let facing_id = ((self.0 >> 1) & 0x0007) as u8;
         unsafe { std::mem::transmute(facing_id) }

@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use glam::{Mat4, Vec3};
 use lib_io::user_io::InputState;
-use wgpu::util::DeviceExt;
 use wgpu::BindGroupLayout;
+use wgpu::util::DeviceExt;
 use winit::keyboard::KeyCode;
 
 use crate::context::render_context::RenderContext;
@@ -20,10 +20,7 @@ pub struct CameraSystem {
 }
 
 impl CameraSystem {
-    pub fn new(
-        render_context: &RenderContext,
-        camera_bind_group_layout: &BindGroupLayout
-    ) -> Self {
+    pub fn new(render_context: &RenderContext, camera_bind_group_layout: &BindGroupLayout) -> Self {
         let gpu_context = &render_context.gpu_contexts[0];
         let config = &render_context.window_contexts[0].config;
 
@@ -51,12 +48,10 @@ impl CameraSystem {
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &camera_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: camera_buffer.as_entire_binding(),
-                    },
-                ],
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                }],
                 label: Some("camera_bind_group"),
             });
 
@@ -72,6 +67,10 @@ impl CameraSystem {
     pub fn update(&mut self, input_state: &InputState, dt: Duration) {
         self.controller
             .update_camera(&mut self.camera, input_state, dt);
+    }
+
+    pub fn set_position(&mut self, position: Vec3) {
+        CameraController::set_position(&mut self.camera, position)
     }
 
     pub fn get_direction(&self) -> Vec3 {
@@ -158,6 +157,10 @@ impl CameraController {
         Self { speed, sensitivity }
     }
 
+    pub fn set_position(camera: &mut CameraPos, position: Vec3) {
+        camera.position = position
+    }
+
     pub fn update_camera(
         &mut self,
         camera: &mut CameraPos,
@@ -189,16 +192,16 @@ impl CameraController {
         // 3. Branchless получение осей
         let get_axis = |key: KeyCode| input_state.is_down(key) as u32 as f32;
 
-        let move_forward = get_axis(KeyCode::KeyW) - get_axis(KeyCode::KeyS);
-        let move_right = get_axis(KeyCode::KeyD) - get_axis(KeyCode::KeyA);
-        let move_up = get_axis(KeyCode::Space) - get_axis(KeyCode::ControlLeft);
+        // let move_forward = get_axis(KeyCode::KeyW) - get_axis(KeyCode::KeyS);
+        // let move_right = get_axis(KeyCode::KeyD) - get_axis(KeyCode::KeyA);
+        // let move_up = get_axis(KeyCode::Space) - get_axis(KeyCode::ControlLeft);
 
         self.speed = get_axis(KeyCode::ShiftLeft) * SPEED + SPEED;
 
         // 4. Применение движения (Везде строгие ПЛЮСЫ)
-        camera.position += forward * move_forward * self.speed * dt;
-        camera.position += right * move_right * self.speed * dt;
-        camera.position.y += move_up * self.speed * dt;
+        // camera.position += forward * move_forward * self.speed * dt;
+        // camera.position += right * move_right * self.speed * dt;
+        // camera.position.y += move_up * self.speed * dt;
 
         // Скролл (Движение вперед при положительном скролле)
         camera.position +=

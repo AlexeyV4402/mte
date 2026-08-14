@@ -1,11 +1,14 @@
 use crate::dimension::Dimension;
+use crate::player_object::PlayerObject;
 use crate::raycast::raycast;
-use crate::types::blocks::block::BlockType;
+use crate::types::blocks::block::{Block, BlockType};
 
 mod chunk;
 mod config;
 mod dimension;
 mod network;
+mod physics_body;
+mod player_object;
 mod raycast;
 mod types;
 mod utils;
@@ -14,9 +17,10 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
+use glam::Vec3;
 use lib_io::user_io::InputState;
 use lib_renderer::context::render_context::RenderContext;
-use lib_renderer::renderer::block_greedy_renderer::Renderer;
+use lib_renderer::renderer::block_grid_renderer::Renderer;
 use types::coordinates;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalPosition;
@@ -31,6 +35,7 @@ pub struct App {
     last_time: Instant,
     paused: bool,
     dimension: Dimension,
+    player_object: PlayerObject,
 }
 
 impl App {
@@ -41,6 +46,7 @@ impl App {
             last_time: Instant::now(),
             paused: false,
             dimension: Dimension::new(),
+            player_object: PlayerObject::new(Vec3::new(0.0, 35.0, 0.0)),
         }
     }
 }
@@ -94,18 +100,20 @@ impl ApplicationHandler<Renderer> for App {
         let origin = renderer.camera_system.camera.position.into();
         let direction = renderer.camera_system.get_direction().into();
 
-        let start = Instant::now();
+        // println!("{:?}", direction);
+
+        // let start = Instant::now();
         let raycast_result = raycast(&self.dimension, origin, direction, 8.0);
-        println!("Поиск рейкаста: {} ms", start.elapsed().as_millis());
+        // println!("Поиск рейкаста: {} ms", start.elapsed().as_millis());
 
         if let Some(raycast) = raycast_result {
             if self.input_state.is_mouse_just_pressed(MouseButton::Left) {
                 self.dimension
-                    .set_block(raycast.target_block, BlockType::Air);
+                    .set_block(raycast.target_block, Block::default());
             }
             if self.input_state.is_mouse_just_pressed(MouseButton::Right) {
                 self.dimension
-                    .set_block(raycast.previous_block, BlockType::Dirt);
+                    .set_block(raycast.previous_block, Block::from_type(BlockType::Dirt));
             }
         }
 
@@ -127,6 +135,15 @@ impl ApplicationHandler<Renderer> for App {
 
         let camera_system = &mut self.renderer.as_mut().unwrap().camera_system;
         camera_system.update(&self.input_state, dt);
+
+        self.player_object.update(
+            &self.input_state,
+            dt,
+            camera_system.get_direction(),
+            &self.dimension,
+        );
+
+        camera_system.set_position(self.player_object.get_position() + Vec3::new(0.0, 0.7, 0.0));
 
         if self.input_state.is_just_pressed(Escape) {
             if !self.paused {

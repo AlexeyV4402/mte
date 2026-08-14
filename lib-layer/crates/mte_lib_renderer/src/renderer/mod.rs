@@ -1,1 +1,1 @@
-pub mod block_greedy_renderer;
+pub mod block_grid_renderer;

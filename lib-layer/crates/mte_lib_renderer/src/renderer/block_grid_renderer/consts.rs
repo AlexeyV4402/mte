@@ -2,7 +2,9 @@ use wgpu::wgt::DrawIndexedIndirectArgs;
 
 use super::types::Vertex;
 
-pub const GLOBAL_BUFFER_SECTION_COUNT: usize = 64;
+pub const MAX_BUFFER_SIZE: u64 = 268435456 * 4;
+
+pub const GLOBAL_BUFFER_SECTION_COUNT: usize = 343;
 
 pub const GLOBAL_INDIRECT_BUFFER_CAPACITY: usize =
     size_of::<DrawIndexedIndirectArgs>() * GLOBAL_BUFFER_SECTION_COUNT;
@@ -17,7 +19,7 @@ pub const GLOBAL_VERTEX_BUFFER_CAPACITY: usize =
     GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY * GLOBAL_BUFFER_SECTION_COUNT;
 
 const _: () = assert!(
-    GLOBAL_VERTEX_BUFFER_CAPACITY <= 268435456,
+    GLOBAL_VERTEX_BUFFER_CAPACITY <= MAX_BUFFER_SIZE as usize,
     "Запрещено создание буферов больше 256 МБ"
 );
 
@@ -27,7 +29,7 @@ pub const GLOBAL_INDEX_BUFFER_CAPACITY: usize =
     GLOBAL_INDEX_BUFFER_SECTION_CAPACITY * GLOBAL_BUFFER_SECTION_COUNT;
 
 const _: () = assert!(
-    GLOBAL_INDEX_BUFFER_CAPACITY <= 268435456,
+    GLOBAL_INDEX_BUFFER_CAPACITY <= MAX_BUFFER_SIZE as usize,
     "Запрещено создание буферов больше 256 МБ"
 );
 
@@ -35,6 +37,6 @@ pub const GLOBAL_MATRIX_BUFFER_CAPACITY: usize =
     GLOBAL_BUFFER_SECTION_COUNT as usize * std::mem::size_of::<[[f32; 4]; 4]>();
 
 const _: () = assert!(
-    GLOBAL_MATRIX_BUFFER_CAPACITY <= 268435456,
+    GLOBAL_MATRIX_BUFFER_CAPACITY <= MAX_BUFFER_SIZE as usize,
     "Запрещено создание буферов больше 256 МБ"
 );
