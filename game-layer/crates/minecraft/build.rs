@@ -37,7 +37,11 @@ pub fn create_texture_array_buffer(paths: &Vec<PathBuf>, tile_size: u32) -> (Vec
 pub fn main() -> Result<(), std::io::Error> {
     let asset_count = 6;
 
-    if fs::metadata(vpath_unchecked!("content://blocks.pck")).and_then(|m| {Ok(m.len())}).unwrap_or(0) == 1024 * asset_count {
+    if fs::metadata(vpath_unchecked!("content://blocks.pck"))
+        .and_then(|m| Ok(m.len()))
+        .unwrap_or(0)
+        == 1024 * asset_count
+    {
         return Ok(());
     }
 

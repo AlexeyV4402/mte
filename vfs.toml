@@ -1,17 +1,17 @@
-[path]
-content = {path = "crate://content/", path_type = "vpath"}
-# data = {path = "crate://content/", path_type = "vpath"}
-aboba = {path = "workspace://asdfg/", path_type = "vpath"}
+# [path]
+# content = {path = "crate://content/", path_type = "vpath"}
+# # data = {path = "crate://content/", path_type = "vpath"}
+# aboba = {path = "workspace://asdfg/", path_type = "vpath"}
 
 
-[[packs]]
-output_name = "000001"
-vfile_name = "pack0"
-desc = "First pack with test components"
-files = [
-    {path = "workspace://game-layer/assets/aboba.jpg", path_type = "vpath", in_pack_path = "aboba.jpg"},
-    {path = "workspace://game-layer/assets/fasn-kukuruza.jpg", path_type = "vpath"}
-]
-dirs = [
-    {path = "workspace://game-layer/assets/", path_type = "vpath", in_pack_path = "asd/"}
-]
+# [[packs]]
+# output_name = "000001"
+# vfile_name = "pack0"
+# desc = "First pack with test components"
+# files = [
+#     {path = "workspace://game-layer/assets/aboba.jpg", path_type = "vpath", in_pack_path = "aboba.jpg"},
+#     {path = "workspace://game-layer/assets/fasn-kukuruza.jpg", path_type = "vpath"}
+# ]
+# dirs = [
+#     {path = "workspace://game-layer/assets/", path_type = "vpath", in_pack_path = "asd/"}
+# ]

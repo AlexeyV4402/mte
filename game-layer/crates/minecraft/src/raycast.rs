@@ -1,5 +1,5 @@
 use crate::coordinates::core::GlobalCoords;
-use crate::dimension::Dimension;
+use crate::types::dimension::Dimension;
 
 pub struct RaycastResult {
     /// Глобальные координаты блока, в который упёрся луч (чтобы сломать)

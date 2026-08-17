@@ -1,7 +1,7 @@
 use glam::{Mat4, Vec3};
 
 use super::core::ChunkCoords;
-use crate::chunk::CHUNK_SIZE;
+use crate::types::chunk::CHUNK_SIZE;
 
 impl ChunkCoords {
     pub fn get_model_mat(self) -> [[f32; 4]; 4] {

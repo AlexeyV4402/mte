@@ -27,7 +27,7 @@ futures = {workspace = true}
 memmap2 = {workspace = true}
 
 dashmap = {workspace = true}
-
+bytemuck = {workspace = true}
 winit = {workspace = true}
 pollster = {workspace = true}
 rustc-hash = {workspace = true}

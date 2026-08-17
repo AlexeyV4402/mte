@@ -85,6 +85,7 @@ pub struct VfsPack {
 #[derive(Debug, Deserialize, Clone, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CompressionType {
+    Unpack,
     None,
     #[default]
     Auto,

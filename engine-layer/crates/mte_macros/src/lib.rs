@@ -4,8 +4,8 @@ use std::env;
 use lib_core::fs::os::get_workspace_dir_from;
 use lib_core::fs::vfs::builder::init_builder_state;
 use proc_macro::TokenStream;
-use syn::parse::Parser;
-use syn::{Expr, Fields, ItemEnum, Lit, LitStr, parse_macro_input};
+use syn::parse::{Parse, ParseStream, Parser};
+use syn::{Error, Expr, Fields, Ident, ItemEnum, Lit, LitBool, LitStr, Token, parse_macro_input};
 
 use crate::find_entry::find_vfs_entry;
 
@@ -155,60 +155,193 @@ pub fn vfs_read_all(input: TokenStream) -> TokenStream {
     }
 }
 
-#[proc_macro_attribute]
-pub fn fill_to_4096(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    // Парсим ваш enum
-    let mut input_enum = parse_macro_input!(item as ItemEnum);
+struct BlockDefinition {
+    name: Ident,
+    solid: LitBool,
+    shape: Expr,
+    profile: Ident,
+    textures: Vec<LitStr>,
+}
 
-    let mut max_id = 0u16;
+// Реализуем трейт Parse, чтобы syn знал, как читать наш синтаксис:
+// Air => { solid: false, shape: Shape::None, profile: AllSides, textures: [...] }
+impl Parse for BlockDefinition {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
 
-    // Проверяем существующие варианты, чтобы узнать текущий максимальный ID
-    for variant in &input_enum.variants {
-        if let Some((_, Expr::Lit(expr_lit))) = &variant.discriminant {
-            if let Lit::Int(lit_int) = &expr_lit.lit {
-                if let Ok(val) = lit_int.base10_parse::<u16>() {
-                    if val > max_id {
-                        max_id = val;
-                    }
+        let content;
+        syn::braced!(content in input);
+
+        // Читаем solid
+        content.parse::<Ident>()?; // пропускаем "solid"
+        content.parse::<Token![:]>()?;
+        let solid: LitBool = content.parse()?;
+        content.parse::<Token![,]>()?;
+
+        // Читаем shape
+        content.parse::<Ident>()?; // пропускаем "shape"
+        content.parse::<Token![:]>()?;
+        let shape: Expr = content.parse()?;
+        content.parse::<Token![,]>()?;
+
+        // Читаем profile
+        content.parse::<Ident>()?; // пропускаем "profile"
+        content.parse::<Token![:]>()?;
+        let profile: Ident = content.parse()?;
+        content.parse::<Token![,]>()?;
+
+        // Читаем textures
+        content.parse::<Ident>()?; // пропускаем "textures"
+        content.parse::<Token![:]>()?;
+
+        let tex_array;
+        syn::bracketed!(tex_array in content);
+        let mut textures = Vec::new();
+        while !tex_array.is_empty() {
+            let tex: LitStr = tex_array.parse()?;
+            textures.push(tex);
+            if tex_array.is_empty() {
+                break;
+            }
+            tex_array.parse::<Token![,]>()?;
+        }
+
+        // Разрешаем опциональную запятую в конце структуры блока
+        if content.peek(Token![,]) {
+            content.parse::<Token![,]>()?;
+        }
+
+        Ok(BlockDefinition {
+            name,
+            solid,
+            shape,
+            profile,
+            textures,
+        })
+    }
+}
+
+// Контейнер для ВСЕХ блоков, разделенных запятыми
+struct BlocksList {
+    blocks: Vec<BlockDefinition>,
+}
+
+impl Parse for BlocksList {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        let mut blocks = Vec::new();
+        while !input.is_empty() {
+            blocks.push(input.parse()?);
+            if input.is_empty() {
+                break;
+            }
+            input.parse::<Token![,]>()?;
+        }
+        Ok(BlocksList { blocks })
+    }
+}
+
+#[proc_macro]
+pub fn define_blocks(input: TokenStream) -> TokenStream {
+    // 1. Распаковываем дерево токенов в наш BlocksList
+    let input_list = parse_macro_input!(input as BlocksList);
+
+    let mut enum_variants = Vec::new();
+    let mut match_solid = Vec::new();
+    let mut match_shape = Vec::new();
+    let mut match_profile = Vec::new();
+    let mut property_initializers = Vec::new();
+    let mut all_textures = Vec::new();
+
+    let mut current_block_id = 0;
+    let mut current_texture_index = 0u32;
+
+    for block in input_list.blocks {
+        let name = &block.name;
+        let solid = &block.solid;
+        let shape = &block.shape;
+        let profile = &block.profile;
+
+        // Собираем пути для твоего внешнего упаковщика паков
+        for tex in &block.textures {
+            all_textures.push(tex.value());
+        }
+
+        enum_variants.push(quote::quote! { #name });
+        match_solid.push(quote::quote! { BlockType::#name => #solid });
+        match_shape.push(quote::quote! { BlockType::#name => #shape });
+        match_profile.push(quote::quote! { BlockType::#name => TextureMappingProfile::#profile });
+
+        // ВАЖНО: Мы вычисляем значения прямо ТУТ, на CPU во время компиляции
+        property_initializers.push(quote::quote! {
+            BlockProperty { base_id: #current_texture_index, profile_id: TextureMappingProfile::#profile as u32 }
+        });
+
+        current_texture_index += block.textures.len() as u32;
+        current_block_id += 1;
+    }
+
+    // Добиваем остаток массива до 4096 дефолтными пустыми свойствами
+    let padding_count = 4096 - current_block_id;
+    let padding =
+        vec![quote::quote! { BlockProperty { base_id: 0, profile_id: 0 } }; padding_count];
+
+    // println!(
+    //     "ASSET_COMPILER: Total textures to pack: {}",
+    //     current_texture_index
+    // );
+    // for path in &all_textures {
+    //     println!("ASSET_COMPILER_PATH: {}", path);
+    // }
+
+    // 2. Генерируем финальный чистый код Rust с помощью макроса quote!
+    let expanded = quote::quote! {
+        pub const REGISTERED_BLOCKS_COUNT: usize = #current_block_id;
+        pub const REGISTERED_TEXTURES_COUNT: u32 = #current_texture_index;
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[repr(u16)]
+        pub enum BlockType {
+            #( #enum_variants ),*
+        }
+
+        impl BlockType {
+            #[inline(always)]
+            pub fn is_solid(self) -> bool {
+                match self {
+                    #( #match_solid ),*
+                }
+            }
+
+            #[inline(always)]
+            pub fn is_transparent(self) -> bool {
+                !self.is_solid()
+            }
+
+            #[inline(always)]
+            pub fn get_shape(self) -> Shape {
+                match self {
+                    #( #match_shape ),*
+                }
+            }
+
+            #[inline(always)]
+            pub fn get_texture_mapping_profile(self) -> TextureMappingProfile {
+                match self {
+                    #( #match_profile ),*
                 }
             }
         }
-    }
 
-    // Если в enum уже есть блоки, резервировать начинаем со следующего ID
-    let start_id = if input_enum.variants.is_empty() {
-        0
-    } else {
-        max_id + 1
+        // Идеальный массив для GPU: никаких изменяемых переменных и циклов,
+        // чистый, запеченный массив констант. Компилятор сожрет его мгновенно.
+        pub static BLOCK_PROPERTIES_REGISTRY: [BlockProperty; 4096] = [
+            #( #property_initializers, )*
+            #( #padding ),*
+        ];
     };
 
-    // Генерируем скрытые варианты _ReservedX от start_id до 4095
-    for id in start_id..4096 {
-        let name = format!("_Reserved{}", id);
-        let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
-
-        let lit = syn::LitInt::new(&id.to_string(), proc_macro2::Span::call_site());
-        let discriminant: Expr = syn::parse2(quote::quote! { #lit }).unwrap();
-
-        // ИСПРАВЛЕНИЕ: Парсим атрибут через parse_outer
-        let attrs = syn::Attribute::parse_outer
-            .parse2(quote::quote! { #[allow(dead_code)] })
-            .unwrap();
-
-        let new_variant = syn::Variant {
-            attrs, // Передаем вектор атрибутов напрямую
-            ident,
-            fields: Fields::Unit,
-            discriminant: Some((syn::token::Eq::default(), discriminant)),
-        };
-
-        input_enum.variants.push(new_variant);
-    }
-
-    // Возвращаем измененный enum обратно в компилятор
-    TokenStream::from(quote::quote! {
-        #input_enum
-    })
+    TokenStream::from(expanded)
 }
 
 // #[proc_macro]

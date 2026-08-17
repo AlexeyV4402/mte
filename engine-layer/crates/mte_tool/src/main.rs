@@ -29,16 +29,35 @@ fn process_asset(os_path: &Path, compression: &CompressionType) -> Result<Vec<u8
     }
 
     let output_content = match compression {
+        CompressionType::Unpack => {
+            if let Some(kind) = detect_file_format(&input_content[0..=16]) {
+                let ext = kind.extension();
+                match ext {
+                    "jpg" | "png" => {
+                        let img = image::load_from_memory(&input_content)
+                            .map_err(|e| format!("Ошибка чтения файла: {}", e))?;
+                        img.to_rgba8().into_raw()
+                    }
+                    // "glb" => {
+                    //     let output = process_glb_to_pack(&input_content);
+                    //     Vec::from(as_u8_slice!(&optimized_data))
+                    // }
+                    unknown => return Err(format!("Неизвестный формат файла: {}", unknown)),
+                }
+            } else {
+                return Err("Формат файла неизвестен".to_string());
+            }
+        }
         CompressionType::None => input_content,
         CompressionType::Auto => {
             if let Some(kind) = detect_file_format(&input_content[0..=16]) {
                 let ext = kind.extension();
                 match ext {
                     "jpg" | "png" => process_png_jpg(&input_content)?,
-                    "glb" => {
-                        let output = process_glb_to_pack(&input_content);
-                        Vec::from(as_u8_slice!(&optimized_data))
-                    }
+                    // "glb" => {
+                    //     let output = process_glb_to_pack(&input_content);
+                    //     Vec::from(as_u8_slice!(&optimized_data))
+                    // }
                     unknown => return Err(format!("Неизвестный формат файла: {}", unknown)),
                 }
             } else {
@@ -77,11 +96,13 @@ fn main() -> Result<(), String> {
 
     let files_to_scan = get_rs_files(scan_path);
 
-    let out = if release {
-        run_syn_parser(files_to_scan)
-    } else {
-        run_regex_parser(files_to_scan)
-    };
+    // let out = if release {
+    //     run_syn_parser(files_to_scan)
+    // } else {
+    //     run_regex_parser(files_to_scan)
+    // };
+
+    let out = run_syn_parser(files_to_scan);
 
     // Словарь <Вызвавший файл, Вектор пар (Имя ассета, Виртуальный путь)>. Для оптимизации.
     let mut grouped_files: HashMap<PathBuf, Vec<(String, String)>> = HashMap::new();
@@ -173,6 +194,7 @@ fn main() -> Result<(), String> {
                                         });
 
                                         counter += 1;
+                                        println!("Ассет успешно обработан;");
                                     },
                                     Err(err) => {
                                         println!("Пропуск ассета (ошибка обработки): {}", err)

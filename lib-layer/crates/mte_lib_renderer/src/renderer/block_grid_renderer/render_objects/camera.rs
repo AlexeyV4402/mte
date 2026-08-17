@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use glam::{Mat4, Vec3};
 use lib_io::user_io::InputState;
-use wgpu::BindGroupLayout;
 use wgpu::util::DeviceExt;
+use wgpu::{BindGroupLayout, BufferDescriptor};
 use winit::keyboard::KeyCode;
 
 use crate::context::render_context::RenderContext;
@@ -35,14 +35,12 @@ impl CameraSystem {
         };
         let projection = CameraProj::new(config.width, config.height, PI / 2.0, 0.1, 500.0);
 
-        let camera_buffer =
-            gpu_context
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Camera Buffer"),
-                    contents: bytemuck::cast_slice(&[CameraUniform::IDENT]),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
+        let camera_buffer = gpu_context.device.create_buffer(&BufferDescriptor {
+            label: Some("Camera Buffer"),
+            size: size_of::<CameraUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         let camera_bind_group = gpu_context
             .device

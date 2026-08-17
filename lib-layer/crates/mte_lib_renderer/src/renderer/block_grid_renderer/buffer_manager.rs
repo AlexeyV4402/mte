@@ -4,8 +4,8 @@ use wgpu::{Buffer, CommandEncoder, Queue};
 use super::consts::{
     GLOBAL_BUFFER_INDEX_PER_SECTION, GLOBAL_BUFFER_SECTION_COUNT, GLOBAL_BUFFER_VERTEX_PER_SECTION, GLOBAL_INDEX_BUFFER_CAPACITY, GLOBAL_INDEX_BUFFER_SECTION_CAPACITY, GLOBAL_INDIRECT_BUFFER_CAPACITY, GLOBAL_MATRIX_BUFFER_CAPACITY, GLOBAL_VERTEX_BUFFER_CAPACITY, GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY
 };
-use super::types::Vertex;
 use crate::context::gpu_context::GpuContext;
+use crate::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 
 enum BufferType {
     Vertex = 0,
@@ -88,24 +88,23 @@ impl BufferManager {
                 global_model_matrix_buffer,
             ],
 
-            global_buffer_free_slots: (0..GLOBAL_BUFFER_SECTION_COUNT).collect(),
+            global_buffer_free_slots: (1..GLOBAL_BUFFER_SECTION_COUNT).collect(),
         }
     }
 
     pub fn load_mesh(
         &mut self,
-        vertices: Vec<Vertex>,
-        indices: Vec<u32>,
+        primitive: BlockIndexedPrimitive,
         model_matrix: [[f32; 4]; 4],
     ) -> anyhow::Result<usize> {
-        if vertices.len() > GLOBAL_BUFFER_VERTEX_PER_SECTION as usize
-            || indices.len() > GLOBAL_BUFFER_INDEX_PER_SECTION as usize
+        if primitive.vertices.len() > GLOBAL_BUFFER_VERTEX_PER_SECTION as usize
+            || primitive.indices.len() > GLOBAL_BUFFER_INDEX_PER_SECTION as usize
         {
             return Err(anyhow::anyhow!(
                 "{} вершин дано;\n{} вершин допустимо;\n{} индексов дано;\n{} индексов допустимо;",
-                vertices.len(),
+                primitive.vertices.len(),
                 GLOBAL_BUFFER_VERTEX_PER_SECTION,
-                indices.len(),
+                primitive.indices.len(),
                 GLOBAL_BUFFER_INDEX_PER_SECTION
             ));
         }
@@ -115,60 +114,7 @@ impl BufferManager {
             .pop()
             .ok_or(anyhow::anyhow!("Нет свободных слотов в VRAM"))?;
 
-        let vertex_offset_bytes = free * GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY;
-        let index_offset_bytes = free * GLOBAL_INDEX_BUFFER_SECTION_CAPACITY;
-        let matrix_offset_bytes = free * std::mem::size_of::<[[f32; 4]; 4]>();
-
-        // Нам нужно знать текущую длину буфера ДО добавления новых данных.
-        // Для самого первого чанка в кадре это будет 0, для второго — конец геометрии первого.
-        let mut current_offset = self.cpu_staging_buffer.len();
-
-        // === ВЕРШИНЫ ===
-        let v_bytes = bytemuck::cast_slice(&vertices);
-        let v_len = v_bytes.len();
-        self.cpu_staging_buffer.extend_from_slice(v_bytes);
-
-        self.cpu_staging_queue.push(StagingBufferCommand {
-            src_offset: current_offset,
-            dst_offset: vertex_offset_bytes,
-            length: v_len,
-            dst_type: BufferType::Vertex,
-        });
-        current_offset += v_len; // Шагаем СТРОГО на размер вершин!
-
-        // === ИНДЕКСЫ ===
-        let i_bytes = bytemuck::cast_slice(&indices);
-        let i_len = i_bytes.len();
-        self.cpu_staging_buffer.extend_from_slice(i_bytes);
-
-        self.cpu_staging_queue.push(StagingBufferCommand {
-            src_offset: current_offset,
-            dst_offset: index_offset_bytes,
-            length: i_len,
-            dst_type: BufferType::Index,
-        });
-        current_offset += i_len; // Шагаем СТРОГО на размер индексов!
-
-        // === МАТРИЦА ===
-        let m_bytes = bytemuck::cast_slice(&model_matrix);
-        let m_len = m_bytes.len();
-        self.cpu_staging_buffer.extend_from_slice(m_bytes);
-
-        self.cpu_staging_queue.push(StagingBufferCommand {
-            src_offset: current_offset,
-            dst_offset: matrix_offset_bytes,
-            length: m_len,
-            dst_type: BufferType::Matrix,
-        });
-
-        // Записываем команду отрисовки [7]
-        self.cpu_indexed_indirect_buffer[free] = DrawIndexedIndirectArgs {
-            index_count: indices.len() as u32,
-            instance_count: 1,
-            first_index: free as u32 * GLOBAL_BUFFER_INDEX_PER_SECTION, // [7]
-            base_vertex: (free as u32 * GLOBAL_BUFFER_VERTEX_PER_SECTION) as i32, // [5]
-            first_instance: free as u32,
-        };
+        self.write_to_slot(free, &primitive, &model_matrix);
 
         Ok(free)
     }
@@ -221,5 +167,67 @@ impl BufferManager {
 
     pub fn get_global_model_matrix_buffer(&self) -> &Buffer {
         return &self.global_buffers[2];
+    }
+
+    pub fn write_to_slot(
+        &mut self,
+        slot_id: usize,
+        primitive: &BlockIndexedPrimitive,
+        model_matrix: &[[f32; 4]; 4],
+    ) {
+        let vertex_offset_bytes = slot_id * GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY;
+        let index_offset_bytes = slot_id * GLOBAL_INDEX_BUFFER_SECTION_CAPACITY;
+        let matrix_offset_bytes = slot_id * std::mem::size_of::<[[f32; 4]; 4]>();
+
+        // Нам нужно знать текущую длину буфера ДО добавления новых данных.
+        // Для самого первого чанка в кадре это будет 0, для второго — конец геометрии первого.
+        let mut current_offset = self.cpu_staging_buffer.len();
+
+        // === ВЕРШИНЫ ===
+        let v_bytes = bytemuck::cast_slice(&primitive.vertices);
+        let v_len = v_bytes.len();
+        self.cpu_staging_buffer.extend_from_slice(v_bytes);
+
+        self.cpu_staging_queue.push(StagingBufferCommand {
+            src_offset: current_offset,
+            dst_offset: vertex_offset_bytes,
+            length: v_len,
+            dst_type: BufferType::Vertex,
+        });
+        current_offset += v_len; // Шагаем СТРОГО на размер вершин!
+
+        // === ИНДЕКСЫ ===
+        let i_bytes = bytemuck::cast_slice(&primitive.indices);
+        let i_len = i_bytes.len();
+        self.cpu_staging_buffer.extend_from_slice(i_bytes);
+
+        self.cpu_staging_queue.push(StagingBufferCommand {
+            src_offset: current_offset,
+            dst_offset: index_offset_bytes,
+            length: i_len,
+            dst_type: BufferType::Index,
+        });
+        current_offset += i_len; // Шагаем СТРОГО на размер индексов!
+
+        // === МАТРИЦА ===
+        let m_bytes = bytemuck::cast_slice(model_matrix);
+        let m_len = m_bytes.len();
+        self.cpu_staging_buffer.extend_from_slice(m_bytes);
+
+        self.cpu_staging_queue.push(StagingBufferCommand {
+            src_offset: current_offset,
+            dst_offset: matrix_offset_bytes,
+            length: m_len,
+            dst_type: BufferType::Matrix,
+        });
+
+        // Записываем команду отрисовки [7]
+        self.cpu_indexed_indirect_buffer[slot_id] = DrawIndexedIndirectArgs {
+            index_count: primitive.indices.len() as u32,
+            instance_count: 1,
+            first_index: slot_id as u32 * GLOBAL_BUFFER_INDEX_PER_SECTION, // [7]
+            base_vertex: (slot_id as u32 * GLOBAL_BUFFER_VERTEX_PER_SECTION) as i32, // [5]
+            first_instance: slot_id as u32,
+        };
     }
 }

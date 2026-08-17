@@ -1,4 +1,5 @@
-use lib_renderer::renderer::block_grid_renderer::types::Vertex;
+use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
+use lib_renderer::renderer::block_grid_renderer::types::BlockVertex;
 
 use crate::types::blocks::block::{Block, BlockType};
 use crate::types::coordinates::core::{InternalCoords, LocalCoords};
@@ -73,7 +74,7 @@ impl Chunk {
         self.data[usize::from(coords)]
     }
 
-    pub fn get_mesh(&self) -> (Vec<Vertex>, Vec<u32>) {
+    pub fn get_mesh(&self) -> BlockIndexedPrimitive {
         let prerender_arr = into_prerender_array(&self.data);
         generate_mesh(&prerender_arr)
     }

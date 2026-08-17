@@ -233,6 +233,7 @@ pub fn primary_in_pack_resolve<'a>(
                 // Рекурсивно ищем файл внутри физической папки
                 let file_os_path = get_files_recursively(&dir_os_path).find(|f| {
                     if let Ok(relative_to_dir) = f.strip_prefix(&dir_os_path) {
+                        // println!("ass: {}; {}", in_pack_base.join(relative_to_dir).display(), tail_path.display());
                         in_pack_base.join(relative_to_dir) == tail_path
                     } else {
                         false

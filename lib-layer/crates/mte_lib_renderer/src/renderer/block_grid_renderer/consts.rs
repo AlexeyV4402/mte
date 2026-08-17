@@ -1,6 +1,6 @@
 use wgpu::wgt::DrawIndexedIndirectArgs;
 
-use super::types::Vertex;
+use super::types::BlockVertex;
 
 pub const MAX_BUFFER_SIZE: u64 = 268435456 * 4;
 
@@ -14,7 +14,7 @@ pub const GLOBAL_BUFFER_INDEX_PER_SECTION: u32 =
     (GLOBAL_BUFFER_VERTEX_PER_SECTION as f32 * 1.5) as u32;
 
 pub const GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY: usize =
-    (size_of::<Vertex>() * GLOBAL_BUFFER_VERTEX_PER_SECTION as usize) as usize;
+    (size_of::<BlockVertex>() * GLOBAL_BUFFER_VERTEX_PER_SECTION as usize) as usize;
 pub const GLOBAL_VERTEX_BUFFER_CAPACITY: usize =
     GLOBAL_VERTEX_BUFFER_SECTION_CAPACITY * GLOBAL_BUFFER_SECTION_COUNT;
 

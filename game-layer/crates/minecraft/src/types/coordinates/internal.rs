@@ -1,5 +1,5 @@
 use super::core::{InternalCoords, InternalCoordsType};
-use crate::chunk::CHUNK_SIZE_WITH_PADDING;
+use crate::types::chunk::CHUNK_SIZE_WITH_PADDING;
 use crate::types::coordinates::core::LocalCoords;
 
 impl InternalCoords {

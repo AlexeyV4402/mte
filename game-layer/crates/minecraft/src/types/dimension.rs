@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use lib_renderer::renderer::block_grid_renderer::Renderer;
-use lib_renderer::renderer::block_grid_renderer::types::Vertex;
+use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
+use lib_renderer::renderer::block_grid_renderer::types::BlockVertex;
 use rustc_hash::FxHashMap;
 
-use crate::chunk::{CHUNK_ARRAY_LEN, CHUNK_SIZE, Chunk};
 use crate::types::blocks::block::{Block, BlockType, PrerenderBlock};
+use crate::types::chunk::{CHUNK_ARRAY_LEN, CHUNK_SIZE, Chunk};
 use crate::types::coordinates::core::{ChunkCoords, GlobalCoords, InternalCoords};
 use crate::utils::mesher::{generate_mesh, into_prerender_array};
 
@@ -92,7 +93,7 @@ impl Dimension {
         }
     }
 
-    pub fn get_chunk_mesh(&self, chunk_coordinates: ChunkCoords) -> (Vec<Vertex>, Vec<u32>) {
+    pub fn get_chunk_mesh(&self, chunk_coordinates: ChunkCoords) -> BlockIndexedPrimitive {
         let central_chunk = self.chunks.get(&chunk_coordinates).unwrap();
 
         central_chunk.get_mesh()

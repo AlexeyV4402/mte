@@ -1,7 +1,19 @@
-use lib_renderer::renderer::block_grid_renderer::types::Vertex;
+use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
+use lib_renderer::renderer::block_grid_renderer::types::BlockVertex;
 
-use crate::chunk::{CHUNK_ARRAY_LEN, VIRT_SIZE_RANGE};
 use crate::types::blocks::block::{Block, PrerenderBlock};
+use crate::types::chunk::{CHUNK_ARRAY_LEN, VIRT_SIZE_RANGE};
+
+pub const SIDE_TOP: u32 = 0;
+pub const SIDE_BOTTOM: u32 = 1;
+pub const SIDE_NORTH: u32 = 2;
+/// -Z
+pub const SIDE_SOUTH: u32 = 3;
+/// +Z
+pub const SIDE_WEST: u32 = 4;
+/// -X
+pub const SIDE_EAST: u32 = 5;
+/// +X
 
 pub fn into_prerender_array(data: &[Block; CHUNK_ARRAY_LEN]) -> [PrerenderBlock; CHUNK_ARRAY_LEN] {
     let mut result = [PrerenderBlock::default(); CHUNK_ARRAY_LEN];
@@ -11,21 +23,10 @@ pub fn into_prerender_array(data: &[Block; CHUNK_ARRAY_LEN]) -> [PrerenderBlock;
     result
 }
 
-const SIDE_TOP: u32 = 0;
-const SIDE_BOTTOM: u32 = 1;
-const SIDE_NORTH: u32 = 2;
-/// -Z
-const SIDE_SOUTH: u32 = 3;
-/// +Z
-const SIDE_WEST: u32 = 4;
-/// -X
-const SIDE_EAST: u32 = 5;
-/// +X
-
 const INTERNAL_MASK: u64 = 0x1_FFFF_FFFE;
 
-pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> (Vec<Vertex>, Vec<u32>) {
-    let mut vertices: Vec<Vertex> = Vec::new();
+pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> BlockIndexedPrimitive {
+    let mut vertices: Vec<BlockVertex> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
 
     let mut present_materials = [false; 4096];
@@ -96,10 +97,10 @@ pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> (Vec<Vertex>, 
                             let x0 = (start_x as isize - 1) as u32;
                             let x1 = (start_x as isize - 1 + len_x as isize) as u32;
                             [
-                                pack_vertex(x1, gpu_y, gpu_z, SIDE_TOP, current_mat_u32),
-                                pack_vertex(x1, gpu_y, gpu_z + 1, SIDE_TOP, current_mat_u32),
-                                pack_vertex(x0, gpu_y, gpu_z + 1, SIDE_TOP, current_mat_u32),
-                                pack_vertex(x0, gpu_y, gpu_z, SIDE_TOP, current_mat_u32),
+                                BlockVertex::new(x1, gpu_y, gpu_z, SIDE_TOP, current_mat_u32),
+                                BlockVertex::new(x1, gpu_y, gpu_z + 1, SIDE_TOP, current_mat_u32),
+                                BlockVertex::new(x0, gpu_y, gpu_z + 1, SIDE_TOP, current_mat_u32),
+                                BlockVertex::new(x0, gpu_y, gpu_z, SIDE_TOP, current_mat_u32),
                             ]
                         },
                     );
@@ -119,10 +120,22 @@ pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> (Vec<Vertex>, 
                             let x0 = (start_x as isize - 1) as u32;
                             let x1 = (start_x as isize - 1 + len_x as isize) as u32;
                             [
-                                pack_vertex(x1, gpu_y, gpu_z + 1, SIDE_BOTTOM, current_mat_u32),
-                                pack_vertex(x1, gpu_y, gpu_z, SIDE_BOTTOM, current_mat_u32),
-                                pack_vertex(x0, gpu_y, gpu_z, SIDE_BOTTOM, current_mat_u32),
-                                pack_vertex(x0, gpu_y, gpu_z + 1, SIDE_BOTTOM, current_mat_u32),
+                                BlockVertex::new(
+                                    x1,
+                                    gpu_y,
+                                    gpu_z + 1,
+                                    SIDE_BOTTOM,
+                                    current_mat_u32,
+                                ),
+                                BlockVertex::new(x1, gpu_y, gpu_z, SIDE_BOTTOM, current_mat_u32),
+                                BlockVertex::new(x0, gpu_y, gpu_z, SIDE_BOTTOM, current_mat_u32),
+                                BlockVertex::new(
+                                    x0,
+                                    gpu_y,
+                                    gpu_z + 1,
+                                    SIDE_BOTTOM,
+                                    current_mat_u32,
+                                ),
                             ]
                         },
                     );
@@ -155,10 +168,10 @@ pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> (Vec<Vertex>, 
                             let z0 = (start_z as isize - 1) as u32;
                             let z1 = (start_z as isize - 1 + len_z as isize) as u32;
                             [
-                                pack_vertex(gpu_x, gpu_y, z1, SIDE_EAST, current_mat_u32),
-                                pack_vertex(gpu_x, gpu_y + 1, z1, SIDE_EAST, current_mat_u32),
-                                pack_vertex(gpu_x, gpu_y + 1, z0, SIDE_EAST, current_mat_u32),
-                                pack_vertex(gpu_x, gpu_y, z0, SIDE_EAST, current_mat_u32),
+                                BlockVertex::new(gpu_x, gpu_y, z1, SIDE_EAST, current_mat_u32),
+                                BlockVertex::new(gpu_x, gpu_y + 1, z1, SIDE_EAST, current_mat_u32),
+                                BlockVertex::new(gpu_x, gpu_y + 1, z0, SIDE_EAST, current_mat_u32),
+                                BlockVertex::new(gpu_x, gpu_y, z0, SIDE_EAST, current_mat_u32),
                             ]
                         },
                     );
@@ -178,10 +191,10 @@ pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> (Vec<Vertex>, 
                             let z0 = (start_z as isize - 1) as u32;
                             let z1 = (start_z as isize - 1 + len_z as isize) as u32;
                             [
-                                pack_vertex(gpu_x, gpu_y, z0, SIDE_WEST, current_mat_u32),
-                                pack_vertex(gpu_x, gpu_y + 1, z0, SIDE_WEST, current_mat_u32),
-                                pack_vertex(gpu_x, gpu_y + 1, z1, SIDE_WEST, current_mat_u32),
-                                pack_vertex(gpu_x, gpu_y, z1, SIDE_WEST, current_mat_u32),
+                                BlockVertex::new(gpu_x, gpu_y, z0, SIDE_WEST, current_mat_u32),
+                                BlockVertex::new(gpu_x, gpu_y + 1, z0, SIDE_WEST, current_mat_u32),
+                                BlockVertex::new(gpu_x, gpu_y + 1, z1, SIDE_WEST, current_mat_u32),
+                                BlockVertex::new(gpu_x, gpu_y, z1, SIDE_WEST, current_mat_u32),
                             ]
                         },
                     );
@@ -214,10 +227,10 @@ pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> (Vec<Vertex>, 
                             let x0 = (start_x as isize - 1) as u32;
                             let x1 = (start_x as isize - 1 + len_x as isize) as u32;
                             [
-                                pack_vertex(x0, gpu_y, gpu_z, SIDE_SOUTH, current_mat_u32),
-                                pack_vertex(x0, gpu_y + 1, gpu_z, SIDE_SOUTH, current_mat_u32),
-                                pack_vertex(x1, gpu_y + 1, gpu_z, SIDE_SOUTH, current_mat_u32),
-                                pack_vertex(x1, gpu_y, gpu_z, SIDE_SOUTH, current_mat_u32),
+                                BlockVertex::new(x0, gpu_y, gpu_z, SIDE_SOUTH, current_mat_u32),
+                                BlockVertex::new(x0, gpu_y + 1, gpu_z, SIDE_SOUTH, current_mat_u32),
+                                BlockVertex::new(x1, gpu_y + 1, gpu_z, SIDE_SOUTH, current_mat_u32),
+                                BlockVertex::new(x1, gpu_y, gpu_z, SIDE_SOUTH, current_mat_u32),
                             ]
                         },
                     );
@@ -237,10 +250,10 @@ pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> (Vec<Vertex>, 
                             let x0 = (start_x as isize - 1) as u32;
                             let x1 = (start_x as isize - 1 + len_x as isize) as u32;
                             [
-                                pack_vertex(x1, gpu_y, gpu_z, SIDE_NORTH, current_mat_u32),
-                                pack_vertex(x1, gpu_y + 1, gpu_z, SIDE_NORTH, current_mat_u32),
-                                pack_vertex(x0, gpu_y + 1, gpu_z, SIDE_NORTH, current_mat_u32),
-                                pack_vertex(x0, gpu_y, gpu_z, SIDE_NORTH, current_mat_u32),
+                                BlockVertex::new(x1, gpu_y, gpu_z, SIDE_NORTH, current_mat_u32),
+                                BlockVertex::new(x1, gpu_y + 1, gpu_z, SIDE_NORTH, current_mat_u32),
+                                BlockVertex::new(x0, gpu_y + 1, gpu_z, SIDE_NORTH, current_mat_u32),
+                                BlockVertex::new(x0, gpu_y, gpu_z, SIDE_NORTH, current_mat_u32),
                             ]
                         },
                     );
@@ -249,28 +262,18 @@ pub fn generate_mesh(data: &[PrerenderBlock; CHUNK_ARRAY_LEN]) -> (Vec<Vertex>, 
         }
     }
 
-    (vertices, indices)
-}
-
-#[inline(always)]
-fn pack_vertex(x: u32, y: u32, z: u32, side: u32, material_id: u32) -> u32 {
-    (x & 0x3F)
-    | ((y & 0x3F) << 6)
-    | ((z & 0x3F) << 12)
-    | ((side & 0x7) << 18)
-    | (0u32 << 21) // facing_id пока 0
-    | ((material_id & 0xFF) << 23)
+    BlockIndexedPrimitive::new(vertices, indices)
 }
 
 fn mesh_bitline<F>(
     mut visible_faces: u64, // Изменили тип на u64
     cross_coord: u32,
     vertex_counter: &mut u32,
-    vertices: &mut Vec<Vertex>,
+    vertices: &mut Vec<BlockVertex>,
     indices: &mut Vec<u32>,
     mut build_quad: F,
 ) where
-    F: FnMut(u32, u32, u32) -> [u32; 4],
+    F: FnMut(u32, u32, u32) -> [BlockVertex; 4],
 {
     if visible_faces == 0 {
         return;
@@ -286,9 +289,7 @@ fn mesh_bitline<F>(
 
         let packed_vertices = build_quad(start, length, cross_coord);
 
-        for packed_data in packed_vertices {
-            vertices.push(Vertex { packed_data });
-        }
+        vertices.extend_from_slice(&packed_vertices);
 
         let vc = *vertex_counter;
         indices.extend_from_slice(&[vc + 0, vc + 1, vc + 2, vc + 0, vc + 2, vc + 3]);

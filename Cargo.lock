@@ -2359,6 +2359,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "bitcode",
+ "bytemuck",
  "dashmap",
  "futures",
  "game_lib",

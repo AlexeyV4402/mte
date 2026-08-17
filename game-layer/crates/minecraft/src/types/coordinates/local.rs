@@ -1,5 +1,5 @@
 use super::core::{LocalCoords, LocalCoordsType};
-use crate::chunk::{CHUNK_SIZE, CHUNK_SIZE_WITH_PADDING};
+use crate::types::chunk::{CHUNK_SIZE, CHUNK_SIZE_WITH_PADDING};
 
 impl LocalCoords {
     const STRIDE_Z: usize = CHUNK_SIZE_WITH_PADDING as usize;

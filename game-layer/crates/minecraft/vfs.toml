@@ -8,10 +8,10 @@ aboba = {path = "workspace://asdfg/", path_type = "vpath"}
 output_name = "000001"
 vfile_name = "pack0"
 desc = "First pack with test components"
-files = [
-    {path = "workspace://game-layer/assets/aboba.jpg", path_type = "vpath"},
-    {path = "workspace://game-layer/assets/fasn-kukuruza.jpg", path_type = "vpath"}
-]
+# files = [
+#     {path = "workspace://game-layer/assets/aboba.jpg", path_type = "vpath"},
+#     {path = "workspace://game-layer/assets/fasn-kukuruza.jpg", path_type = "vpath"}
+# ]
 dirs = [
-    {path = "workspace://game-layer/assets/", path_type = "vpath", in_pack_path = "assets/"}
+    {path = "workspace://game-layer/assets/minecraft/textures/blocks/", path_type = "vpath", in_pack_path = "", compressions = {"png" = "unpack", "jpg" = "unpack"}}
 ]

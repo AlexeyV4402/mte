@@ -1,14 +1,11 @@
-use crate::dimension::Dimension;
-use crate::player_object::PlayerObject;
 use crate::raycast::raycast;
-use crate::types::blocks::block::{Block, BlockType};
+use crate::types::blocks::block::{BLOCK_PROPERTIES_REGISTRY, Block, BlockType, REGISTERED_BLOCKS_COUNT, REGISTERED_TEXTURES_COUNT};
+use crate::types::dimension::Dimension;
+use crate::types::player_object::PlayerObject;
 
-mod chunk;
 mod config;
-mod dimension;
+mod gui;
 mod network;
-mod physics_body;
-mod player_object;
 mod raycast;
 mod types;
 mod utils;
@@ -60,8 +57,16 @@ impl ApplicationHandler<Renderer> for App {
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
         let gpu_context = pollster::block_on(RenderContext::new(window.clone())).unwrap();
+        self.renderer = Some(
+            pollster::block_on(Renderer::new(
+                gpu_context,
+                bytemuck::cast_slice(&BLOCK_PROPERTIES_REGISTRY),
+                REGISTERED_TEXTURES_COUNT as u32
+            ))
+            .unwrap(),
+        );
 
-        self.renderer = Some(pollster::block_on(Renderer::new(gpu_context)).unwrap());
+        // self.renderer.unwrap().buffer_manager.write_to_slot(0, vertices, indices, model_matrix);
     }
 
     #[allow(unused_mut)]
@@ -111,13 +116,16 @@ impl ApplicationHandler<Renderer> for App {
                 self.dimension
                     .set_block(raycast.target_block, Block::default());
             }
-            if self.input_state.is_mouse_just_pressed(MouseButton::Right) {
-                self.dimension
-                    .set_block(raycast.previous_block, Block::from_type(BlockType::Dirt));
-            }
+            if let types::item::ItemType::Block(block) = self.player_object.get_hand_item().item_type
+                {
+                    if self.input_state.is_mouse_just_pressed(MouseButton::Right) {
+                        self.dimension.set_block(raycast.previous_block, block);
+                    }
+                }
         }
 
         self.dimension.update_chunk_meshes(renderer);
+        self.player_object.update_inventory_meshes(renderer);
 
         // Конец рабочего цикла
 
@@ -150,14 +158,16 @@ impl ApplicationHandler<Renderer> for App {
                 if window.fullscreen().is_none() {
                     window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
                 }
-                window
-                    .set_cursor_grab(winit::window::CursorGrabMode::None)
-                    .expect("Не удалось захватить курсор");
+                match window.set_cursor_grab(winit::window::CursorGrabMode::None) {
+                    Ok(_) => {}
+                    Err(err) => println!("{}", err),
+                };
                 // window.set_cursor_visible(false);
             } else {
-                window
-                    .set_cursor_grab(winit::window::CursorGrabMode::Locked)
-                    .expect("Не удалось захватить курсор");
+                match window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
+                    Ok(_) => {}
+                    Err(err) => println!("{}", err),
+                };
                 window
                     .set_cursor_position(LogicalPosition::new(1280.0, 700.0))
                     .expect("msg");

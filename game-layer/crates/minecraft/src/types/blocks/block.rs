@@ -1,47 +1,21 @@
-use mte_macros::fill_to_4096;
+use mte_macros::define_blocks;
 
 use crate::types::blocks::properties::{Facing, Shape, TextureMappingProfile};
 
-#[fill_to_4096]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u16)]
-pub enum BlockType {
-    Air = 0,
-    Dirt = 1,
-    Stone = 2,
-    DirtStairs = 3,
-    DirtSlab = 4,
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct BlockProperty {
+    pub base_id: u32,
+    pub profile_id: u32,
 }
 
-impl BlockType {
-    #[inline]
-    pub fn is_solid(self) -> bool {
-        match self {
-            BlockType::Air | BlockType::DirtStairs | BlockType::DirtSlab => false,
-            _ => true,
-        }
-    }
-
-    pub fn is_transparent(self) -> bool {
-        self != Self::Air
-    }
-
-    pub fn get_shape(self) -> Shape {
-        match self {
-            BlockType::Air => Shape::None,
-            BlockType::Dirt => Shape::Full,
-            BlockType::Stone => Shape::Full,
-            BlockType::DirtStairs => Shape::Stair,
-            BlockType::DirtSlab => Shape::Slab,
-            _ => Shape::Full,
-        }
-    }
-
-    pub fn get_texture_mapping_profile(self) -> TextureMappingProfile {
-        match self {
-            _ => TextureMappingProfile::AllSides,
-        }
-    }
+define_blocks! {
+    Air   => { solid: false, shape: Shape::None, profile: AllSides,       textures: ["packs://pack0/void.png"] },
+    Dirt  => { solid: true,  shape: Shape::Full, profile: AllSides,       textures: ["packs://pack0/dirt.png"] },
+    Ilya  => { solid: true,  shape: Shape::Full, profile: AllSides,       textures: ["packs://pack0/ilya.jpg"] },
+    Grass => { solid: true,  shape: Shape::Full, profile: TopBottomSides, textures: ["packs://pack0/grass_block_top.png", "packs://pack0/dirt.png", "packs://pack0/grass_block_side.png"] },
+    Stone => { solid: true,  shape: Shape::Full, profile: AllSides,       textures: ["packs://pack0/stone.png"] },
+    OakLog => { solid: true,  shape: Shape::Full, profile: AxisAligned,   textures: ["packs://pack0/oak_log_top.png", "packs://pack0/oak_log_side.png"] }
 }
 
 #[derive(Default, Clone, Copy)]
