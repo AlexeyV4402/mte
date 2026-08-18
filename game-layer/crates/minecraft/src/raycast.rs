@@ -74,15 +74,11 @@ pub fn raycast(
     // Цикл шагов луча по сетке
     while current_distance < max_distance {
         // Проверяем, твердый ли блок в текущей ячейке
-        let current_coords = GlobalCoords::from((cx, cy, cz));
-        if dimension
-            .get_block(current_coords.clone())
-            .get_type()
-            .is_solid()
-        {
+        let current_coords = GlobalCoords::new(cx, cy, cz);
+        if dimension.get_block(current_coords).get_type().is_solid() {
             return Some(RaycastResult {
                 target_block: current_coords,
-                previous_block: GlobalCoords::from((prev_x, prev_y, prev_z)),
+                previous_block: GlobalCoords::new(prev_x, prev_y, prev_z),
             });
         }
 

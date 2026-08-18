@@ -1,13 +1,12 @@
 use std::mem::transmute;
 use std::time::Duration;
 
-use glam::{Mat4, Vec2, Vec3, Vec3Swizzles};
+use glam::{Mat4, Vec3};
 use lib_io::user_io::InputState;
 use lib_renderer::renderer::block_grid_renderer::Renderer;
 use winit::keyboard::KeyCode;
 
 use crate::types::blocks::block::{Block, BlockType, REGISTERED_BLOCKS_COUNT};
-use crate::types::coordinates::core::{GlobalCoords, GlobalCoordsType};
 use crate::types::dimension::Dimension;
 use crate::types::item::{Item, ItemType};
 use crate::types::physics_body::PhysicsBody;

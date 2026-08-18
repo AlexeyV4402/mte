@@ -5,7 +5,7 @@ impl LocalCoords {
     const STRIDE_Z: usize = CHUNK_SIZE_WITH_PADDING as usize;
     const STRIDE_Y: usize = Self::STRIDE_Z * Self::STRIDE_Z;
     pub fn in_chunk(self) -> bool {
-        self.x < CHUNK_SIZE && self.y < CHUNK_SIZE && self.z < CHUNK_SIZE
+        self.0.all_lt(CHUNK_SIZE)
     }
 }
 

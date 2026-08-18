@@ -1,36 +1,17 @@
-use std::marker::PhantomData;
-
-use super::core::{
-    ChunkCoords, ChunkCoordsType, GlobalCoords, GlobalCoordsType, LocalCoords, LocalCoordsType
-};
+use super::core::{ChunkCoords, GlobalCoords, LocalCoords};
 
 impl GlobalCoords {
     pub fn get_chunk(self) -> ChunkCoords {
-        ChunkCoords {
-            x: (self.x >> 5) as ChunkCoordsType,
-            y: (self.y >> 5) as ChunkCoordsType,
-            z: (self.z >> 5) as ChunkCoordsType,
-            _marker: PhantomData,
-        }
+        ChunkCoords::from(self.0.as_i32().shr(5))
     }
 
     pub fn get_local(self) -> LocalCoords {
-        LocalCoords {
-            x: (self.x & 31) as LocalCoordsType,
-            y: (self.y & 31) as LocalCoordsType,
-            z: (self.z & 31) as LocalCoordsType,
-            _marker: PhantomData,
-        }
+        LocalCoords::from(self.0.bit_and(31).as_u32())
     }
 }
 
 impl From<(ChunkCoords, LocalCoords)> for GlobalCoords {
     fn from(data: (ChunkCoords, LocalCoords)) -> Self {
-        Self {
-            x: ((data.0.x << 5) + (data.1.x as ChunkCoordsType)) as GlobalCoordsType,
-            y: ((data.0.y << 5) + (data.1.y as ChunkCoordsType)) as GlobalCoordsType,
-            z: ((data.0.z << 5) + (data.1.z as ChunkCoordsType)) as GlobalCoordsType,
-            _marker: PhantomData,
-        }
+        Self::from((data.0.0.shl(5) + data.1.0.as_i32()).as_i64())
     }
 }

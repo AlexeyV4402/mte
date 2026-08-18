@@ -1,15 +1,12 @@
-use std::collections::HashMap;
 use std::time::Instant;
 
 use lib_renderer::renderer::block_grid_renderer::Renderer;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
-use lib_renderer::renderer::block_grid_renderer::types::BlockVertex;
 use rustc_hash::FxHashMap;
 
-use crate::types::blocks::block::{Block, BlockType, PrerenderBlock};
-use crate::types::chunk::{CHUNK_ARRAY_LEN, CHUNK_SIZE, Chunk};
+use crate::types::blocks::block::{Block, BlockType};
+use crate::types::chunk::Chunk;
 use crate::types::coordinates::core::{ChunkCoords, GlobalCoords, InternalCoords};
-use crate::utils::mesher::{generate_mesh, into_prerender_array};
 
 pub struct Dimension {
     chunks: FxHashMap<ChunkCoords, Chunk>,
@@ -130,13 +127,13 @@ impl Dimension {
             let neighbor = unsafe { self.get_chunk_mut_or_create(neighbor_coords) };
             // У соседа координата по X — это правый воротник (33)
             // Координаты Y и Z переводим во внутренний диапазон массива соседа (делаем +1)
-            neighbor.set_block_raw(InternalCoords::from((33, local_y + 1, local_z + 1)), block);
+            neighbor.set_block_raw(InternalCoords::new(33, local_y + 1, local_z + 1), block);
             self.dirt_chunk(neighbor_coords);
         } else if local_x == 31 {
             // Блок на правом краю чанка. Он является ЗАПАДНЫМ воротником (индекс 0) для соседа СПРАВА (+X)
             let neighbor_coords = (chunk_x + 1, chunk_y, chunk_z).into();
             let neighbor = unsafe { self.get_chunk_mut_or_create(neighbor_coords) };
-            neighbor.set_block_raw(InternalCoords::from((0, local_y + 1, local_z + 1)), block);
+            neighbor.set_block_raw(InternalCoords::new(0, local_y + 1, local_z + 1), block);
             self.dirt_chunk(neighbor_coords);
             // println!("Блок установлен на: {:?}", InternalCoords::from((0, local_y + 1, local_z + 1)));
         }
@@ -146,13 +143,13 @@ impl Dimension {
             // Блок на самом дне чанка. Он является ВЕРХНИМ воротником (индекс 33) для соседа СНИЗУ (-Y)
             let neighbor_coords = (chunk_x, chunk_y - 1, chunk_z).into();
             let neighbor = unsafe { self.get_chunk_mut_or_create(neighbor_coords) };
-            neighbor.set_block_raw(InternalCoords::from((local_x + 1, 33, local_z + 1)), block);
+            neighbor.set_block_raw(InternalCoords::new(local_x + 1, 33, local_z + 1), block);
             self.dirt_chunk(neighbor_coords);
         } else if local_y == 31 {
             // Блок на самой крыше чанка. Он является НИЖНИМ воротником (индекс 0) для соседа СВЕРХУ (+Y)
             let neighbor_coords = (chunk_x, chunk_y + 1, chunk_z).into();
             let neighbor = unsafe { self.get_chunk_mut_or_create(neighbor_coords) };
-            neighbor.set_block_raw(InternalCoords::from((local_x + 1, 0, local_z + 1)), block);
+            neighbor.set_block_raw(InternalCoords::new(local_x + 1, 0, local_z + 1), block);
             self.dirt_chunk(neighbor_coords);
         }
 
@@ -161,13 +158,13 @@ impl Dimension {
             // Блок на северном краю чанка. Он является ЮЖНЫМ воротником (индекс 33) для соседа СЗАДИ (-Z)
             let neighbor_coords = (chunk_x, chunk_y, chunk_z - 1).into();
             let neighbor = unsafe { self.get_chunk_mut_or_create(neighbor_coords) };
-            neighbor.set_block_raw(InternalCoords::from((local_x + 1, local_y + 1, 33)), block);
+            neighbor.set_block_raw(InternalCoords::new(local_x + 1, local_y + 1, 33), block);
             self.dirt_chunk(neighbor_coords);
         } else if local_z == 31 {
             // Блок на южном краю чанка. Он является СЕВЕРНЫМ воротником (индекс 0) для соседа СПЕРЕДИ (+Z)
             let neighbor_coords = (chunk_x, chunk_y, chunk_z + 1).into();
             let neighbor = unsafe { self.get_chunk_mut_or_create(neighbor_coords) };
-            neighbor.set_block_raw(InternalCoords::from((local_x + 1, local_y + 1, 0)), block);
+            neighbor.set_block_raw(InternalCoords::new(local_x + 1, local_y + 1, 0), block);
             self.dirt_chunk(neighbor_coords);
         }
     }
@@ -180,23 +177,23 @@ impl Dimension {
 
         // Предположим, у тебя есть способ получить мутабельные ссылки на оба чанка:
         let (chunk_bottom, chunk_top) = self.get_two_chunks_mut(pos_bottom, pos_top);
-        
+
         // МЕГА-ОПТИМИЗАЦИЯ: Копируем целый слой 1156 блоков за ОДНУ команду!
 
         // 1. Наш ВЕРХНИЙ игровой слой (Y = 32) Чанка Нижнего
         //    копируется в НИЖНИЙ воротник (Y = 0) Чанка Верхнего
-        let src_start = usize::from(InternalCoords::from((0, 32, 0)));
+        let src_start = usize::from(InternalCoords::new(0, 32, 0));
         let src_end = src_start + InternalCoords::STRIDE_Y;
-        let dst_start = usize::from(InternalCoords::from((0, 0, 0)));
+        let dst_start = usize::from(InternalCoords::new(0, 0, 0));
 
         chunk_top.data[dst_start..dst_start + InternalCoords::STRIDE_Y]
             .copy_from_slice(&chunk_bottom.data[src_start..src_end]);
 
         // 2. И наоборот: НИЖНИЙ игровой слой (Y = 1) Чанка Верхнего
         //    копируется в ВЕРХНИЙ воротник (Y = 33) Чанка Нижнего
-        let src_start_2 = usize::from(InternalCoords::from((0, 1, 0)));
+        let src_start_2 = usize::from(InternalCoords::new(0, 1, 0));
         let src_end_2 = src_start_2 + InternalCoords::STRIDE_Y;
-        let dst_start_2 = usize::from(InternalCoords::from((0, 33, 0)));
+        let dst_start_2 = usize::from(InternalCoords::new(0, 33, 0));
 
         chunk_bottom.data[dst_start_2..dst_start_2 + InternalCoords::STRIDE_Y]
             .copy_from_slice(&chunk_top.data[src_start_2..src_end_2]);
@@ -211,15 +208,15 @@ impl Dimension {
             // 1. Наш ЮЖНЫЙ игровой слой (Z = 32) Чанка Северного
             //    копируется в СЕВЕРНЫЙ воротник (Z = 0) Чанка Южного
             //    Линия вдоль оси X (34 блока) лежит в памяти ПОДРЯД, копируем слайсом!
-            let src_idx = usize::from(InternalCoords::from((0, y, 32)));
-            let dst_idx = usize::from(InternalCoords::from((0, y, 0)));
+            let src_idx = usize::from(InternalCoords::new(0, y, 32));
+            let dst_idx = usize::from(InternalCoords::new(0, y, 0));
             chunk_south.data[dst_idx..dst_idx + 34]
                 .copy_from_slice(&chunk_north.data[src_idx..src_idx + 34]);
 
             // 2. Наш СЕВЕРНЫЙ игровой слой (Z = 1) Чанка Южного
             //    копируется в ЮЖНЫЙ воротник (Z = 33) Чанка Северного
-            let src_idx_2 = usize::from(InternalCoords::from((0, y, 1)));
-            let dst_idx_2 = usize::from(InternalCoords::from((0, y, 33)));
+            let src_idx_2 = usize::from(InternalCoords::new(0, y, 1));
+            let dst_idx_2 = usize::from(InternalCoords::new(0, y, 33));
             chunk_north.data[dst_idx_2..dst_idx_2 + 34]
                 .copy_from_slice(&chunk_south.data[src_idx_2..src_idx_2 + 34]);
         }
@@ -233,13 +230,13 @@ impl Dimension {
         for y in 0..34 {
             for z in 0..34 {
                 // ВОСТОЧНЫЙ игровой край (X = 32) Чанка Западного -> ЗАПАДНЫЙ воротник (X = 0) Чанка Восточного
-                let src_idx = usize::from(InternalCoords::from((32, y, z)));
-                let dst_idx = usize::from(InternalCoords::from((0, y, z)));
+                let src_idx = usize::from(InternalCoords::new(32, y, z));
+                let dst_idx = usize::from(InternalCoords::new(0, y, z));
                 chunk_east.data[dst_idx] = chunk_west.data[src_idx];
 
                 // ЗАПАДНЫЙ игровой край (X = 1) Чанка Восточного -> ВОСТОЧНЫЙ воротник (X = 33) Чанка Западного
-                let src_idx_2 = usize::from(InternalCoords::from((1, y, z)));
-                let dst_idx_2 = usize::from(InternalCoords::from((33, y, z)));
+                let src_idx_2 = usize::from(InternalCoords::new(1, y, z));
+                let dst_idx_2 = usize::from(InternalCoords::new(33, y, z));
                 chunk_west.data[dst_idx_2] = chunk_east.data[src_idx_2];
             }
         }

@@ -105,11 +105,11 @@ impl PhysicsBody {
                     for y in min_y..=max_y {
                         for z in min_z..=max_z {
                             if dimension
-                                .get_block(GlobalCoords::from((
+                                .get_block(GlobalCoords::new(
                                     max_x as GlobalCoordsType,
                                     y as GlobalCoordsType,
                                     z as GlobalCoordsType,
-                                )))
+                                ))
                                 .get_type()
                                 .is_solid()
                             {
@@ -124,11 +124,11 @@ impl PhysicsBody {
                     for y in min_y..=max_y {
                         for z in min_z..=max_z {
                             if dimension
-                                .get_block(GlobalCoords::from((
+                                .get_block(GlobalCoords::new(
                                     min_x as GlobalCoordsType,
                                     y as GlobalCoordsType,
                                     z as GlobalCoordsType,
-                                )))
+                                ))
                                 .get_type()
                                 .is_solid()
                             {
@@ -151,11 +151,11 @@ impl PhysicsBody {
                     for x in min_x..=max_x {
                         for z in min_z..=max_z {
                             if dimension
-                                .get_block(GlobalCoords::from((
+                                .get_block(GlobalCoords::new(
                                     x as GlobalCoordsType,
                                     max_y as GlobalCoordsType,
                                     z as GlobalCoordsType,
-                                )))
+                                ))
                                 .get_type()
                                 .is_solid()
                             {
@@ -168,11 +168,11 @@ impl PhysicsBody {
                     for x in min_x..=max_x {
                         for z in min_z..=max_z {
                             if dimension
-                                .get_block(GlobalCoords::from((
+                                .get_block(GlobalCoords::new(
                                     x as GlobalCoordsType,
                                     min_y as GlobalCoordsType,
                                     z as GlobalCoordsType,
-                                )))
+                                ))
                                 .get_type()
                                 .is_solid()
                             {
@@ -193,11 +193,11 @@ impl PhysicsBody {
                     for x in min_x..=max_x {
                         for y in min_y..=max_y {
                             if dimension
-                                .get_block(GlobalCoords::from((
+                                .get_block(GlobalCoords::new(
                                     x as GlobalCoordsType,
                                     y as GlobalCoordsType,
                                     max_z as GlobalCoordsType,
-                                )))
+                                ))
                                 .get_type()
                                 .is_solid()
                             {
@@ -210,11 +210,11 @@ impl PhysicsBody {
                     for x in min_x..=max_x {
                         for y in min_y..=max_y {
                             if dimension
-                                .get_block(GlobalCoords::from((
+                                .get_block(GlobalCoords::new(
                                     x as GlobalCoordsType,
                                     y as GlobalCoordsType,
                                     min_z as GlobalCoordsType,
-                                )))
+                                ))
                                 .get_type()
                                 .is_solid()
                             {

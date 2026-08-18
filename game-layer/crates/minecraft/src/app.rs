@@ -1,12 +1,3 @@
-use crate::raycast::raycast;
-use crate::types;
-use crate::types::blocks::block::{
-    BLOCK_PROPERTIES_REGISTRY, Block, REGISTERED_TEXTURES_COUNT
-};
-use crate::types::coordinates::core::{ChunkCoords, GlobalCoords};
-use crate::types::dimension::Dimension;
-use crate::types::player_object::PlayerObject;
-
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -23,6 +14,13 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode::Escape;
 use winit::window::WindowAttributes;
 
+use crate::raycast::raycast;
+use crate::types;
+use crate::types::blocks::block::{BLOCK_PROPERTIES_REGISTRY, Block, REGISTERED_TEXTURES_COUNT};
+use crate::types::coordinates::core::{ChunkCoords, GlobalCoords};
+use crate::types::dimension::Dimension;
+use crate::types::player_object::PlayerObject;
+
 pub struct App {
     renderer: Option<Renderer>,
     input_state: InputState,
@@ -31,7 +29,6 @@ pub struct App {
     dimension: Dimension,
     player_object: PlayerObject,
 }
-
 
 impl App {
     pub fn new() -> Self {
@@ -144,7 +141,7 @@ impl ApplicationHandler<()> for App {
                 }
             }
         }
-        
+
         let camera_position_f32 = self.player_object.get_position() + Vec3::new(0.0, 0.7, 0.0);
         // println!("camera_position_f32_1: {:?}", camera_position_f32);
 
@@ -167,7 +164,6 @@ impl ApplicationHandler<()> for App {
         // 4. Пробрасываем в рендерер и инвентарь
         self.dimension.update_chunk_meshes(renderer);
         self.player_object.update_inventory_meshes(renderer);
-
 
         renderer.camera_system.set_position(camera_position_f32);
 
