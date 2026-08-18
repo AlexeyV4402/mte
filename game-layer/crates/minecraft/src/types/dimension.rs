@@ -21,9 +21,9 @@ impl Dimension {
         let start = Instant::now();
         let mut chunks: FxHashMap<ChunkCoords, Chunk> = Default::default();
         let mut dirty_chunks = Vec::new();
-        for x in 0..=16 {
+        for x in 0..=0 {
             for y in 0..=0 {
-                for z in 0..=16 {
+                for z in 0..=0 {
                     chunks.insert(
                         (x, y, z).into(),
                         // Chunk::from_block_as_grid(Block::from_type(BlockType::Dirt), 2),
@@ -74,18 +74,22 @@ impl Dimension {
         if self.dirty_chunks.len() > 0 {
             let start = Instant::now();
             while self.dirty_chunks.len() > 0 {
-                let dirty_chunk_coords = self.dirty_chunks.pop().unwrap();
+                let dirty_chunk_coords_global = self.dirty_chunks.pop().unwrap();
 
-                let chunk_mesh = self.get_chunk_mesh(dirty_chunk_coords.clone());
+                let chunk_mesh = self.get_chunk_mesh(dirty_chunk_coords_global.clone());
 
-                let chunk = self.get_chunk_mut(dirty_chunk_coords).unwrap();
+                let chunk = self.get_chunk_mut(dirty_chunk_coords_global).unwrap();
 
                 if let Some(old_id) = chunk.vram_slot_id {
                     renderer.unload_mesh(old_id);
                 }
 
+                // let (global_x, global_y, global_z) = dirty_chunk_coords_global.into();
+                // let (relate_center_x, relate_center_y, relate_center_z) = relate_center.into();
+                // let dirty_chunk_coords_relative = ChunkCoords::from((global_x - relate_center_x, global_y - relate_center_y, global_z - relate_center_z));
+
                 let id = renderer
-                    .load_mesh(chunk_mesh, dirty_chunk_coords.get_model_mat())
+                    .load_mesh(chunk_mesh, dirty_chunk_coords_global.get_model_mat())
                     .unwrap();
                 chunk.vram_slot_id = Some(id);
             }
@@ -176,7 +180,7 @@ impl Dimension {
 
         // Предположим, у тебя есть способ получить мутабельные ссылки на оба чанка:
         let (chunk_bottom, chunk_top) = self.get_two_chunks_mut(pos_bottom, pos_top);
-
+        
         // МЕГА-ОПТИМИЗАЦИЯ: Копируем целый слой 1156 блоков за ОДНУ команду!
 
         // 1. Наш ВЕРХНИЙ игровой слой (Y = 32) Чанка Нижнего

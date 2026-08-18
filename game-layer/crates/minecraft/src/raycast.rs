@@ -1,4 +1,4 @@
-use crate::coordinates::core::GlobalCoords;
+use crate::types::coordinates::core::GlobalCoords;
 use crate::types::dimension::Dimension;
 
 pub struct RaycastResult {

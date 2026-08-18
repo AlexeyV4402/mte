@@ -335,7 +335,7 @@ pub fn define_blocks(input: TokenStream) -> TokenStream {
 
         // Идеальный массив для GPU: никаких изменяемых переменных и циклов,
         // чистый, запеченный массив констант. Компилятор сожрет его мгновенно.
-        pub static BLOCK_PROPERTIES_REGISTRY: [BlockProperty; 4096] = [
+        pub const BLOCK_PROPERTIES_REGISTRY: [BlockProperty; 4096] = [
             #( #property_initializers, )*
             #( #padding ),*
         ];

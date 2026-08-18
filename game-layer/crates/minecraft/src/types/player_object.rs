@@ -69,6 +69,7 @@ impl PlayerObject {
         match &mut self.hand_item.item_type {
             ItemType::Block(block) => {
                 self.hand_dirty = mouse_wheel_delta != 0;
+                println!("{}", self.hand_dirty);
                 *block = block.with_type(unsafe {
                     transmute::<u16, BlockType>(
                         (transmute::<BlockType, u16>(block.get_type()) as i16 + mouse_wheel_delta)

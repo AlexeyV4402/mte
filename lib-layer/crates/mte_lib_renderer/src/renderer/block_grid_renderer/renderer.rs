@@ -55,7 +55,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub async fn new(render_context: RenderContext, block_properties: &[u8], layer_count: u32) -> Result<Renderer> {
+    pub async fn new(render_context: RenderContext, args: RendererCreateArgs) -> Result<Renderer> {
         let gpu_context = &render_context.gpu_contexts[0];
         let window_context = &render_context.window_contexts[0];
 
@@ -141,11 +141,11 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
-        let (_texture, texture_view) = TextureArray2D::init(
+        let texture_view = TextureArray2D::init(
             &gpu_context,
             vfs_include_bytes!("workspace://game-layer/crates/minecraft/content/pack0"),
             16,
-            layer_count,
+            args.layer_count,
         );
 
         let static_bind_group = gpu_context
@@ -173,7 +173,7 @@ impl Renderer {
 
         gpu_context
             .queue
-            .write_buffer(&block_properties_buffer, 0, block_properties);
+            .write_buffer(&block_properties_buffer, 0, args.block_properties);
 
         let camera_bind_group_layout =
             gpu_context
@@ -454,7 +454,7 @@ impl Renderer {
         }
     }
 
-    pub fn update(&mut self, _dt: std::time::Duration) {
+    pub fn update(&mut self) {
         self.render_context.gpu_contexts[0].queue.write_buffer(
             &self.camera_system.buffer,
             0,
@@ -542,4 +542,9 @@ impl Renderer {
                 cache: None,
             })
     }
+}
+
+pub struct RendererCreateArgs {
+    pub block_properties: &'static [u8],
+    pub layer_count: u32,
 }

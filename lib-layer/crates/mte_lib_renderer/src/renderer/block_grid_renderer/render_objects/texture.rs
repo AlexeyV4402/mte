@@ -45,7 +45,7 @@ impl TextureArray2D {
         rgba_bytes: &[u8],
         tile_size: u32,
         layer_count: u32,
-    ) -> (wgpu::Texture, wgpu::TextureView) {
+    ) -> wgpu::TextureView {
         let texture = gpu_context.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Voxel Texture Array"),
             size: wgpu::Extent3d {
@@ -97,7 +97,7 @@ impl TextureArray2D {
             usage: None,
         });
 
-        (texture, view)
+        view
     }
 }
 
@@ -118,11 +118,7 @@ impl TextureAtlas {
         (uv_min, uv_max)
     }
 
-    pub fn init(
-        &self,
-        gpu_context: &GpuContext,
-        rgba_bytes: &[u8],
-    ) -> (wgpu::Texture, wgpu::TextureView) {
+    pub fn init(&self, gpu_context: &GpuContext, rgba_bytes: &[u8]) -> wgpu::TextureView {
         let texture = gpu_context.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Voxel Texture Array"),
             size: wgpu::Extent3d {
@@ -174,6 +170,6 @@ impl TextureAtlas {
             usage: None,
         });
 
-        (texture, view)
+        view
     }
 }
