@@ -6,16 +6,22 @@ use mte_macros::{vfs_include_bytes, vfs_include_str};
 use wgpu::util::DeviceExt;
 use wgpu::wgt::DrawIndexedIndirectArgs;
 use wgpu::{
-    BindGroup, Buffer, BufferDescriptor, PipelineLayout, RenderPipeline, ShaderModule, TextureFormat, TextureView
+    BindGroup, BindGroupLayout, Buffer, BufferDescriptor, PipelineLayout, RenderPipeline, ShaderModule, TextureFormat, TextureView, VertexBufferLayout
 };
 
-use super::render_objects::camera::CameraSystem;
 use super::render_objects::texture::{DepthTexture, TextureArray2D};
 use super::types::BlockVertex;
 use crate::context::gpu_context::GpuContext;
 use crate::context::render_context::RenderContext;
-use crate::renderer::block_grid_renderer::buffer_manager::BufferManager;
+use crate::renderer::block_grid_renderer::inditect_buffer_manager::{
+    BufferType, IndirectBufferManager
+};
+use crate::renderer::block_grid_renderer::render_objects::camera::{
+    RotatableLens, WorldCameraUniform
+};
+use crate::renderer::block_grid_renderer::render_objects::outline::OutlineUniform;
 use crate::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
+use crate::renderer::block_grid_renderer::types::vertex::SimpleVertex;
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub enum PipelineType {
@@ -42,16 +48,18 @@ pub struct Renderer {
 
     depth_texture_view: TextureView,
 
+    pub block_static_render_data: BlockStaticRenderData,
+
+    pub pass_1_perframe_bg: BindGroup,
+    pub camera_buffer: Buffer,
+
+    pub pass_2_resize_bg: BindGroup,
     pub proj_buffer: Buffer,
-    pub proj_bind_group: BindGroup,
 
-    pub static_bind_group: BindGroup,
+    pub matrix_bg: BindGroup,
+    pub vector_bg: BindGroup,
 
-    pub model_matrix_bind_group: BindGroup,
-
-    pub camera_system: CameraSystem,
-
-    pub buffer_manager: BufferManager,
+    pub buffer_manager: IndirectBufferManager,
 }
 
 impl Renderer {
@@ -59,15 +67,16 @@ impl Renderer {
         let gpu_context = &render_context.gpu_contexts[0];
         let window_context = &render_context.window_contexts[0];
 
-        let buffer_manager = BufferManager::new(gpu_context);
+        let buffer_manager = IndirectBufferManager::new(gpu_context);
 
-        // Загрузка основного шейдера
+        let (block_data, block_data_bgl) = BlockStaticRenderData::new(&gpu_context, args);
+
         let opaque_shader_code =
             vfs_include_str!("workspace://game-layer/assets/minecraft/shaders/opaque_new.wgsl");
         let opaque_shader = gpu_context
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Shader"),
+                label: Some("World Shader"),
                 source: wgpu::ShaderSource::Wgsl(opaque_shader_code.into()),
             });
 
@@ -76,106 +85,11 @@ impl Renderer {
         let hand_shader = gpu_context
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Shader"),
+                label: Some("Hand Shader"),
                 source: wgpu::ShaderSource::Wgsl(hand_shader_code.into()),
             });
 
-        let texture_sampler = gpu_context.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Voxel Block Sampler"),
-            // Включаем бесконечный повтор текстуры по всем осям координат
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
-            // Включаем Nearest-фильтрацию для сохранения четкого пиксель-арта
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            // Настройка мипмаппинга (Nearest убирает размытие блоков на расстоянии)
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            // Остальные параметры оставляем дефолтными
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 32.0,
-            compare: None,
-            anisotropy_clamp: 1,
-            border_color: None,
-        });
-
-        let static_bind_group_layout =
-            gpu_context
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2Array,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::VERTEX,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                    ],
-                    label: Some("static_bind_group_layout"),
-                });
-
-        let block_properties_buffer = gpu_context.device.create_buffer(&BufferDescriptor {
-            label: Some("Block Properties Buffer"),
-            size: (size_of::<u64>() * 4096) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let texture_view = TextureArray2D::init(
-            &gpu_context,
-            vfs_include_bytes!("workspace://game-layer/crates/minecraft/content/pack0"),
-            16,
-            args.layer_count,
-        );
-
-        let static_bind_group = gpu_context
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &static_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&texture_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&texture_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Buffer(
-                            block_properties_buffer.as_entire_buffer_binding(),
-                        ),
-                    },
-                ],
-                label: Some("texture_bind_group"),
-            });
-
-        gpu_context
-            .queue
-            .write_buffer(&block_properties_buffer, 0, args.block_properties);
-
-        let camera_bind_group_layout =
+        let one_uniform_buffer_bgl =
             gpu_context
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -189,10 +103,10 @@ impl Renderer {
                         },
                         count: None,
                     }],
-                    label: Some("camera_bind_group_layout"),
+                    label: Some("one_uniform_buffer_bgl"),
                 });
 
-        let model_matrix_bind_group_layout =
+        let model_data_bgl =
             gpu_context
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -206,27 +120,52 @@ impl Renderer {
                         },
                         count: None,
                     }],
-                    label: Some("model_matrix_bind_group_layout"),
+                    label: Some("model_data_bgl"),
                 });
 
-        let depth_texture_view =
-            DepthTexture::create(&gpu_context.device, &window_context.config, "depth_texture");
+        let matrix_bg = gpu_context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &model_data_bgl,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer_manager
+                        .get_global_buffer::<{ BufferType::Matrix as usize }>()
+                        .as_entire_binding(),
+                }],
+                label: Some("matrix_bg"),
+            });
 
-        let model_matrix_bind_group =
-            gpu_context
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout: &model_matrix_bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: buffer_manager
-                            .get_global_model_matrix_buffer()
-                            .as_entire_binding(),
-                    }],
-                    label: Some("model_matrix_bind_group"),
-                });
+        let vector_bg = gpu_context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &model_data_bgl,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer_manager
+                        .get_global_buffer::<{ BufferType::Vector as usize }>()
+                        .as_entire_binding(),
+                }],
+                label: Some("vector_bg"),
+            });
 
-        let camera_system = CameraSystem::new(&render_context, &camera_bind_group_layout);
+        let camera_buffer = gpu_context.device.create_buffer(&BufferDescriptor {
+            label: Some("Camera Buffer"),
+            size: size_of::<WorldCameraUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let pass_1_perframe_bg = gpu_context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &one_uniform_buffer_bgl,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                }],
+                label: Some("pass_1_perframe_bg"),
+            });
 
         let proj_buffer = gpu_context.device.create_buffer(&BufferDescriptor {
             label: Some("Projection Buffer"),
@@ -235,27 +174,26 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
-        let proj_bind_group = gpu_context
+        let pass_2_resize_bg = gpu_context
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &camera_bind_group_layout,
+                layout: &one_uniform_buffer_bgl,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: proj_buffer.as_entire_binding(),
                 }],
-                label: Some("proj_bind_group"),
+                label: Some("pass_2_resize_bg"),
             });
 
-        // Создание раскладки конвеера
         let render_pipeline_layout =
             gpu_context
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
-                        Some(&static_bind_group_layout),
-                        Some(&camera_bind_group_layout),
-                        Some(&model_matrix_bind_group_layout),
+                        Some(&block_data_bgl),
+                        Some(&one_uniform_buffer_bgl),
+                        Some(&model_data_bgl),
                     ],
                     immediate_size: 0,
                 });
@@ -265,6 +203,7 @@ impl Renderer {
             "Layer 0 Render Pipeline",
             &render_pipeline_layout,
             &opaque_shader,
+            &[BlockVertex::desc()],
             window_context.config.format,
         );
         let hand_render_pipeline = Self::create_standart_render_pipeline(
@@ -272,18 +211,24 @@ impl Renderer {
             "Hand Render Pipeline",
             &render_pipeline_layout,
             &hand_shader,
+            &[BlockVertex::desc()],
             window_context.config.format,
         );
+
+        let depth_texture_view =
+            DepthTexture::create(&gpu_context.device, &window_context.config, "depth_texture");
 
         Ok(Renderer {
             render_context,
             pipelines: [layer_0_render_pipeline, hand_render_pipeline],
             depth_texture_view,
+            block_static_render_data: block_data,
+            pass_1_perframe_bg,
+            camera_buffer,
+            pass_2_resize_bg,
             proj_buffer,
-            proj_bind_group,
-            static_bind_group,
-            model_matrix_bind_group,
-            camera_system,
+            matrix_bg,
+            vector_bg,
             buffer_manager,
         })
     }
@@ -336,6 +281,15 @@ impl Renderer {
             self.buffer_manager
                 .prepare_buffers(&gpu_context.queue, &mut encoder);
 
+            let global_vertex_buffer = self
+                .buffer_manager
+                .get_global_buffer::<{ BufferType::Vertex as usize }>()
+                .slice(..);
+            let global_index_buffer = self
+                .buffer_manager
+                .get_global_buffer::<{ BufferType::Index as usize }>()
+                .slice(..);
+
             {
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Render Pass"),
@@ -368,16 +322,12 @@ impl Renderer {
 
                 render_pass.set_pipeline(&self.pipelines[0]);
 
-                render_pass.set_bind_group(0, &self.static_bind_group, &[]);
-                render_pass.set_bind_group(1, &self.camera_system.bind_group, &[]);
-                render_pass.set_bind_group(2, &self.model_matrix_bind_group, &[]);
+                render_pass.set_bind_group(0, &self.block_static_render_data.bind_group, &[]);
+                render_pass.set_bind_group(1, &self.pass_1_perframe_bg, &[]);
+                render_pass.set_bind_group(2, &self.vector_bg, &[]);
 
-                render_pass
-                    .set_vertex_buffer(0, self.buffer_manager.get_global_vertex_buffer().slice(..));
-                render_pass.set_index_buffer(
-                    self.buffer_manager.get_global_index_buffer().slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
+                render_pass.set_vertex_buffer(0, global_vertex_buffer);
+                render_pass.set_index_buffer(global_index_buffer, wgpu::IndexFormat::Uint32);
 
                 render_pass.multi_draw_indexed_indirect(
                     &self.buffer_manager.gpu_indexed_indirect_buffer,
@@ -413,16 +363,12 @@ impl Renderer {
 
                 render_pass.set_pipeline(&self.pipelines[1]);
 
-                render_pass.set_bind_group(0, &self.static_bind_group, &[]);
-                render_pass.set_bind_group(1, &self.proj_bind_group, &[]);
-                render_pass.set_bind_group(2, &self.model_matrix_bind_group, &[]);
+                render_pass.set_bind_group(0, &self.block_static_render_data.bind_group, &[]);
+                render_pass.set_bind_group(1, &self.pass_2_resize_bg, &[]);
+                render_pass.set_bind_group(2, &self.matrix_bg, &[]);
 
-                render_pass
-                    .set_vertex_buffer(0, self.buffer_manager.get_global_vertex_buffer().slice(..));
-                render_pass.set_index_buffer(
-                    self.buffer_manager.get_global_index_buffer().slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
+                render_pass.set_vertex_buffer(0, global_vertex_buffer);
+                render_pass.set_index_buffer(global_index_buffer, wgpu::IndexFormat::Uint32);
 
                 render_pass.multi_draw_indexed_indirect(
                     &self.buffer_manager.gpu_indexed_indirect_buffer,
@@ -443,48 +389,41 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
+    pub fn resize(&mut self, width: u32, height: u32, lens: &mut RotatableLens) {
         if width > 0 && height > 0 {
             self.render_context.resize(width, height);
+            lens.aspect = width as f32 / height as f32;
             self.depth_texture_view = DepthTexture::create(
                 &self.render_context.gpu_contexts[0].device,
                 &self.render_context.window_contexts[0].config,
                 "depth_texture",
             );
+            self.render_context.gpu_contexts[0].queue.write_buffer(
+                &self.proj_buffer,
+                0,
+                bytemuck::cast_slice(&lens.get_proj_mat().to_cols_array_2d()),
+            );
         }
     }
 
-    pub fn update(&mut self) {
+    pub fn frame(&mut self, pass_1_camera_uniform: WorldCameraUniform) {
         self.render_context.gpu_contexts[0].queue.write_buffer(
-            &self.camera_system.buffer,
+            &self.camera_buffer,
             0,
-            bytemuck::cast_slice(&[self.camera_system.get_uniform().view_proj]),
-        );
-        // println!(
-        //     "Матрица проекции: {}",
-        //     self.camera_system.projection.calc_matrix()
-        // );
-        self.render_context.gpu_contexts[0].queue.write_buffer(
-            &self.proj_buffer,
-            0,
-            bytemuck::cast_slice(&[self
-                .camera_system
-                .projection
-                .calc_matrix()
-                .to_cols_array_2d()]),
+            bytemuck::cast_slice(&[pass_1_camera_uniform]),
         );
     }
 
-    pub fn load_mesh(
+    pub fn load_chunk(
         &mut self,
         primitive: BlockIndexedPrimitive,
-        model_matrix: [[f32; 4]; 4],
+        position: [i32; 4],
     ) -> anyhow::Result<usize> {
-        self.buffer_manager.load_mesh(primitive, model_matrix)
+        self.buffer_manager.load_chunk(primitive, position)
     }
 
-    pub fn unload_mesh(&mut self, slot_id: usize) {
-        self.buffer_manager.unload_mesh(slot_id);
+    pub fn unload(&mut self, slot_id: usize) {
+        self.buffer_manager.unload(slot_id);
     }
 
     pub fn create_standart_render_pipeline(
@@ -492,6 +431,7 @@ impl Renderer {
         label: &'static str,
         layout: &PipelineLayout,
         shader: &ShaderModule,
+        buffers: &[VertexBufferLayout],
         format: TextureFormat,
     ) -> RenderPipeline {
         gpu_context
@@ -502,7 +442,7 @@ impl Renderer {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[BlockVertex::desc()],
+                    buffers: buffers,
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
@@ -542,9 +482,172 @@ impl Renderer {
                 cache: None,
             })
     }
+
+    pub fn create_line_render_pipeline(
+        gpu_context: &GpuContext,
+        label: &'static str,
+        layout: &PipelineLayout,
+        shader: &ShaderModule,
+        buffers: &[VertexBufferLayout],
+        format: TextureFormat,
+    ) -> RenderPipeline {
+        gpu_context
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: buffers,
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::LineList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    // cull_mode: Some(wgpu::Face::Back),
+                    cull_mode: None,
+                    // polygon_mode: wgpu::PolygonMode::Line,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Less),
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview_mask: None,
+                cache: None,
+            })
+    }
 }
 
+#[derive(Clone, Copy)]
 pub struct RendererCreateArgs {
     pub block_properties: &'static [u8],
     pub layer_count: u32,
+    pub outline_vertices: &'static [u8],
+}
+
+pub struct BlockStaticRenderData {
+    pub bind_group: BindGroup,
+}
+
+impl BlockStaticRenderData {
+    pub fn new(gpu_context: &GpuContext, args: RendererCreateArgs) -> (Self, BindGroupLayout) {
+        let texture_sampler = gpu_context.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Voxel Block Sampler"),
+            // Включаем бесконечный повтор текстуры по всем осям координат
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            // Включаем Nearest-фильтрацию для сохранения четкого пиксель-арта
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            // Настройка мипмаппинга (Nearest убирает размытие блоков на расстоянии)
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            // Остальные параметры оставляем дефолтными
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 32.0,
+            compare: None,
+            anisotropy_clamp: 1,
+            border_color: None,
+        });
+
+        let bind_group_layout =
+            gpu_context
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                view_dimension: wgpu::TextureViewDimension::D2Array,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::VERTEX,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                    ],
+                    label: Some("block_static_render_data_bind_group_layout"),
+                });
+
+        let block_properties_buffer = gpu_context.device.create_buffer(&BufferDescriptor {
+            label: Some("Block Properties Buffer"),
+            size: (size_of::<u64>() * args.block_properties.len()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let texture_view = TextureArray2D::init(
+            &gpu_context,
+            vfs_include_bytes!("workspace://game-layer/crates/minecraft/content/pack0"),
+            16,
+            args.layer_count,
+        );
+
+        let bind_group = gpu_context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&texture_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Buffer(
+                            block_properties_buffer.as_entire_buffer_binding(),
+                        ),
+                    },
+                ],
+                label: Some("texture_bind_group"),
+            });
+
+        gpu_context
+            .queue
+            .write_buffer(&block_properties_buffer, 0, args.block_properties);
+        (Self { bind_group }, bind_group_layout)
+    }
 }

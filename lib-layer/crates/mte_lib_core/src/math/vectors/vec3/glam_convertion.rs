@@ -1,4 +1,5 @@
 use super::core::Vector3;
+use crate::math::vectors::Vector;
 
 impl From<Vector3<f32>> for glam::Vec3 {
     #[inline(always)]
@@ -27,3 +28,6 @@ impl Into<Vector3<i32>> for glam::IVec3 {
         Vector3::new(self.x, self.y, self.z)
     }
 }
+
+impl Vector for glam::Vec3 {}
+impl Vector for glam::IVec3 {}

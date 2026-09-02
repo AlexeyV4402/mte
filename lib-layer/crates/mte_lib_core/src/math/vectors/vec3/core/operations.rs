@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
 
 use super::Vector3;
 
@@ -29,6 +29,15 @@ impl<T: Add<Output = T>> Add for Vector3<T> {
     }
 }
 
+impl<T: AddAssign> AddAssign for Vector3<T> {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Self) {
+        self.x += rhs.x;
+        self.y += rhs.y;
+        self.z += rhs.z;
+    }
+}
+
 impl<T: Sub<Output = T>> Sub for Vector3<T> {
     type Output = Self;
 
@@ -42,6 +51,15 @@ impl<T: Sub<Output = T>> Sub for Vector3<T> {
     }
 }
 
+impl<T: SubAssign> SubAssign for Vector3<T> {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: Self) {
+        self.x -= rhs.x;
+        self.y -= rhs.y;
+        self.z -= rhs.z;
+    }
+}
+
 impl<T: Mul<Output = T> + Copy> Mul<T> for Vector3<T> {
     type Output = Self;
 
@@ -51,6 +69,19 @@ impl<T: Mul<Output = T> + Copy> Mul<T> for Vector3<T> {
             x: self.x * scalar,
             y: self.y * scalar,
             z: self.z * scalar,
+        }
+    }
+}
+
+impl<T: Div<Output = T> + Copy> Div<T> for Vector3<T> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn div(self, scalar: T) -> Self::Output {
+        Vector3 {
+            x: self.x / scalar,
+            y: self.y / scalar,
+            z: self.z / scalar,
         }
     }
 }

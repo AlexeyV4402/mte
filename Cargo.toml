@@ -28,6 +28,7 @@ renet_netcode = "2.0.0"
 bitcode = {version = "0.6.9", features = ["glam"]}
 bincode = "1.3.3"
 serde = { version = "1.0", features = ["derive"] }
+serde-big-array = "0.5"
 rayon = "1.12.0"
 toml = "1.1.2+spec-1.1.0"
 x25519-dalek = { version = "2.0", features = ["static_secrets"] }
@@ -56,6 +57,8 @@ metastrip = "0.1"
 ctt = "0.4.0"
 serde_json = "1.0.150"
 rustc-hash = "2.1.3"
+noise = "0.9"
+ash = "0.38.0+1.3.281"
 
 [workspace]
 members = [

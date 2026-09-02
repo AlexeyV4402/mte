@@ -2372,12 +2372,15 @@ dependencies = [
  "mte_lib_network",
  "mte_lib_renderer",
  "mte_macros",
+ "noise",
  "pollster",
+ "rayon",
  "renet 2.0.0",
  "renet_netcode",
  "renet_udp",
  "rustc-hash 2.1.3",
  "serde",
+ "serde-big-array",
  "tokio",
  "winit",
 ]
@@ -2458,6 +2461,7 @@ name = "mte_lib_renderer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ash",
  "bincode",
  "bytemuck",
  "chrono",
@@ -2591,6 +2595,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "418abd1b6d34fbf6cae440dc874771b0525a604428704c76e48b29a5e67b8003"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "noise"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6da45c8333f2e152fc665d78a380be060eb84fad8ca4c9f7ac8ca29216cff0cc"
+dependencies = [
+ "num-traits",
+ "rand 0.8.6",
+ "rand_xorshift",
 ]
 
 [[package]]
@@ -3460,6 +3475,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_xorshift"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d25bf25ec5ae4a3f1b92f929810509a2f53d7dca2f50b794ff57e3face536c8f"
+dependencies = [
+ "rand_core 0.6.4",
+]
+
+[[package]]
 name = "range-alloc"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3816,6 +3840,15 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
+]
+
+[[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

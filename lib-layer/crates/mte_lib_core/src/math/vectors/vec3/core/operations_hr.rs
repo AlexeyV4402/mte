@@ -13,11 +13,27 @@ impl<T> Vector3<T> {
     }
 
     #[inline(always)]
+    pub fn all_le<RHS>(self, other: RHS) -> bool
+    where
+        T: PartialOrd<RHS>,
+    {
+        self.x <= other && self.y <= other && self.z <= other
+    }
+
+    #[inline(always)]
     pub fn all_gt<RHS>(self, other: RHS) -> bool
     where
         T: PartialOrd<RHS>,
     {
         self.x > other && self.y > other && self.z > other
+    }
+
+    #[inline(always)]
+    pub fn all_ge<RHS>(self, other: RHS) -> bool
+    where
+        T: PartialOrd<RHS>,
+    {
+        self.x >= other && self.y >= other && self.z >= other
     }
 
     #[inline(always)]
@@ -34,6 +50,38 @@ impl<T> Vector3<T> {
         T: PartialOrd<RHS>,
     {
         self.x > other || self.y > other || self.z > other
+    }
+
+    #[inline(always)]
+    pub fn all_lt_cw(self, rhs: Self) -> bool
+    where
+        T: PartialOrd<T>,
+    {
+        self.x < rhs.x && self.y < rhs.y && self.z < rhs.z
+    }
+
+    #[inline(always)]
+    pub fn all_le_cw(self, rhs: Self) -> bool
+    where
+        T: PartialOrd<T>,
+    {
+        self.x <= rhs.x && self.y <= rhs.y && self.z <= rhs.z
+    }
+
+    #[inline(always)]
+    pub fn all_gt_cw(self, rhs: Self) -> bool
+    where
+        T: PartialOrd<T>,
+    {
+        self.x > rhs.x && self.y > rhs.y && self.z > rhs.z
+    }
+
+    #[inline(always)]
+    pub fn all_ge_cw(self, rhs: Self) -> bool
+    where
+        T: PartialOrd<T>,
+    {
+        self.x >= rhs.x && self.y >= rhs.y && self.z >= rhs.z
     }
 
     #[inline(always)]

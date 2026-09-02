@@ -1,76 +1,11 @@
-use std::ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Shl, Shr};
 
 use super::Vector3;
 
 /// Component-wise methods
 impl<T> Vector3<T> {
     #[inline(always)]
-    pub fn shr<RHS>(self, rhs: RHS) -> Vector3<T::Output>
-    where
-        T: Shr<RHS>,
-        RHS: Copy,
-    {
-        Vector3 {
-            x: self.x >> rhs,
-            y: self.y >> rhs,
-            z: self.z >> rhs,
-        }
-    }
-
-    #[inline(always)]
-    pub fn shl<RHS>(self, rhs: RHS) -> Vector3<T::Output>
-    where
-        T: Shl<RHS>,
-        RHS: Copy,
-    {
-        Vector3 {
-            x: self.x << rhs,
-            y: self.y << rhs,
-            z: self.z << rhs,
-        }
-    }
-
-    #[inline(always)]
-    pub fn bit_and<RHS>(self, rhs: RHS) -> Vector3<T::Output>
-    where
-        T: BitAnd<RHS>,
-        RHS: Copy,
-    {
-        Vector3 {
-            x: self.x & rhs,
-            y: self.y & rhs,
-            z: self.z & rhs,
-        }
-    }
-
-    #[inline(always)]
-    pub fn bit_or<RHS>(self, rhs: RHS) -> Vector3<T::Output>
-    where
-        T: BitOr<RHS>,
-        RHS: Copy,
-    {
-        Vector3 {
-            x: self.x | rhs,
-            y: self.y | rhs,
-            z: self.z | rhs,
-        }
-    }
-
-    #[inline(always)]
-    pub fn bit_xor<RHS>(self, rhs: RHS) -> Vector3<T::Output>
-    where
-        T: BitXor<RHS>,
-        RHS: Copy,
-    {
-        Vector3 {
-            x: self.x ^ rhs,
-            y: self.y ^ rhs,
-            z: self.z ^ rhs,
-        }
-    }
-
-    #[inline(always)]
-    pub fn not(self) -> Vector3<T::Output>
+    pub fn not_cw(self) -> Vector3<T::Output>
     where
         T: Not,
     {
@@ -78,6 +13,54 @@ impl<T> Vector3<T> {
             x: !self.x,
             y: !self.y,
             z: !self.z,
+        }
+    }
+
+    #[inline(always)]
+    pub fn div_cw(self, other: Self) -> Vector3<T::Output>
+    where
+        T: Div<T>,
+    {
+        Vector3 {
+            x: self.x / other.x,
+            y: self.y / other.y,
+            z: self.z / other.z,
+        }
+    }
+
+    #[inline(always)]
+    pub fn mul_cw(self, other: Self) -> Vector3<T::Output>
+    where
+        T: Mul<T>,
+    {
+        Vector3 {
+            x: self.x * other.x,
+            y: self.y * other.y,
+            z: self.z * other.z,
+        }
+    }
+
+    #[inline(always)]
+    pub fn min_cw(self, other: Self) -> Self
+    where
+        T: Ord,
+    {
+        Vector3 {
+            x: self.x.min(other.x),
+            y: self.y.min(other.y),
+            z: self.z.min(other.z),
+        }
+    }
+
+    #[inline(always)]
+    pub fn max_cw(self, other: Self) -> Self
+    where
+        T: Ord,
+    {
+        Vector3 {
+            x: self.x.max(other.x),
+            y: self.y.max(other.y),
+            z: self.z.max(other.z),
         }
     }
 }

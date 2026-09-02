@@ -5,3 +5,4 @@ pub mod dimension;
 pub mod item;
 pub mod physics_body;
 pub mod player_object;
+pub mod world;

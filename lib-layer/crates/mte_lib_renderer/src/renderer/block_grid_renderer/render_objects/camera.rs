@@ -1,167 +1,103 @@
 use std::f32::consts::PI;
 use std::time::Duration;
 
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Quat, Vec3};
+use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_io::user_io::InputState;
-use wgpu::util::DeviceExt;
-use wgpu::{BindGroupLayout, BufferDescriptor};
-use winit::keyboard::KeyCode;
 
-use crate::context::render_context::RenderContext;
+pub struct RotatableLens {
+    yaw_rad: f32,
+    pitch_rad: f32,
 
-const SPEED: f32 = 5.0;
-
-pub struct CameraSystem {
-    pub camera: CameraPos,
-    pub controller: CameraController,
-    pub projection: CameraProj,
-    pub buffer: wgpu::Buffer,
-    pub bind_group: wgpu::BindGroup,
-}
-
-impl CameraSystem {
-    pub fn new(render_context: &RenderContext, camera_bind_group_layout: &BindGroupLayout) -> Self {
-        let gpu_context = &render_context.gpu_contexts[0];
-        let config = &render_context.window_contexts[0].config;
-
-        let camera = CameraPos {
-            position: Vec3 {
-                x: 3.0,
-                y: 0.0,
-                z: -30.0,
-            },
-            yaw_rad: 0.0,
-            pitch_rad: 0.0,
-        };
-        let projection = CameraProj::new(config.width, config.height, PI / 2.0, 0.1, 500.0);
-
-        let camera_buffer = gpu_context.device.create_buffer(&BufferDescriptor {
-            label: Some("Camera Buffer"),
-            size: size_of::<CameraUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let camera_bind_group = gpu_context
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &camera_bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                }],
-                label: Some("camera_bind_group"),
-            });
-
-        Self {
-            camera,
-            controller: CameraController::new(SPEED, 1.0),
-            projection,
-            buffer: camera_buffer,
-            bind_group: camera_bind_group,
-        }
-    }
-
-    pub fn update(&mut self, input_state: &InputState, dt: Duration) {
-        self.controller
-            .update_camera(&mut self.camera, input_state, dt);
-    }
-
-    pub fn set_position(&mut self, position: Vec3) {
-        CameraController::set_position(&mut self.camera, position)
-    }
-
-    pub fn get_direction(&self) -> Vec3 {
-        let (yaw_sin, yaw_cos) = self.camera.yaw_rad.sin_cos();
-        let (pitch_sin, pitch_cos) = self.camera.pitch_rad.sin_cos();
-        Vec3::new(pitch_cos * yaw_sin, pitch_sin, pitch_cos * yaw_cos).normalize_or_zero()
-    }
-
-    pub fn get_uniform(&self) -> CameraUniform {
-        let view = self.camera.calc_matrix();
-        // let view = Mat4::IDENTITY;
-        let proj = self.projection.calc_matrix();
-        // let proj = Mat4::IDENTITY;
-        let view_proj = proj * view;
-
-        CameraUniform {
-            // view_position: self.camera.position.extend(1.0).into(),
-            // view: view.to_cols_array_2d(),
-            view_proj: view_proj.to_cols_array_2d(),
-            // view_proj: Mat4::IDENTITY.transpose().to_cols_array_2d(),
-
-            // inv_proj: proj.safe_inverse().to_cols_array_2d(),
-            // inv_view: view.safe_inverse().to_cols_array_2d(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct CameraPos {
-    pub position: Vec3,
-    pub yaw_rad: f32,
-    pub pitch_rad: f32,
-}
-
-impl CameraPos {
-    /// Calculate view matrix
-    pub fn calc_matrix(&self) -> Mat4 {
-        let (pitch_sin, pitch_cos) = self.pitch_rad.sin_cos();
-        let (yaw_sin, yaw_cos) = self.yaw_rad.sin_cos();
-
-        // ИСПРАВЛЕНО: Привели базис осей X и Z в соответствие с контроллером
-        // Для yaw = 0 и pitch = 0 вектор станет (0.0, 0.0, 1.0) - взгляд строго вперед по Z
-        let forward =
-            Vec3::new(pitch_cos * yaw_sin, pitch_sin, pitch_cos * yaw_cos).normalize_or_zero();
-
-        Mat4::look_to_lh(self.position, forward, Vec3::Y)
-    }
-}
-
-pub struct CameraProj {
-    aspect: f32,
+    pub aspect: f32,
     fovy_rad: f32,
     znear: f32,
     zfar: f32,
 }
 
-impl CameraProj {
-    pub fn new(width: u32, height: u32, fovy: f32, znear: f32, zfar: f32) -> Self {
+pub struct RotatableCamera {
+    pub lens: RotatableLens,
+    pub rotator: CameraRotator,
+}
+
+impl RotatableLens {
+    pub fn new(width: f32, height: f32) -> Self {
         Self {
-            aspect: width as f32 / height as f32,
-            fovy_rad: fovy.into(),
-            znear,
-            zfar,
+            yaw_rad: 0.0,
+            pitch_rad: 0.0,
+            aspect: width / height,
+            fovy_rad: PI / 2.0,
+            znear: 0.1,
+            zfar: 500.0,
         }
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.aspect = width as f32 / height as f32;
+    pub fn get_direction(&self) -> Vec3 {
+        let (yaw_sin, yaw_cos) = self.yaw_rad.sin_cos();
+        let (pitch_sin, pitch_cos) = self.pitch_rad.sin_cos();
+        Vec3::new(pitch_cos * yaw_sin, pitch_sin, pitch_cos * yaw_cos).normalize_or_zero()
     }
 
-    pub fn calc_matrix(&self) -> Mat4 {
+    pub fn get_proj_mat(&self) -> Mat4 {
         Mat4::perspective_lh(self.fovy_rad, self.aspect, self.znear, self.zfar)
+    }
+
+    pub fn get_view_rotation_mat(&self) -> Mat4 {
+        let yaw_quat = Quat::from_axis_angle(Vec3::Y, self.yaw_rad);
+        let pitch_quat = Quat::from_axis_angle(Vec3::X, -self.pitch_rad);
+
+        let camera_rotation = yaw_quat * pitch_quat;
+
+        let view_rotation_quat = camera_rotation.conjugate();
+
+        Mat4::from_quat(view_rotation_quat)
+    }
+
+    pub fn get_world_uniform(&self, position: PrecisePositionC32) -> WorldCameraUniform {
+        let view_rotation = self.get_view_rotation_mat().to_cols_array_2d();
+        let proj_matrix = self.get_proj_mat().to_cols_array_2d();
+
+        WorldCameraUniform {
+            proj_matrix,
+            view_rotation,
+            camera_chunk: position.chunk.to_vec4_left().to_array(),
+            camera_in_chunk_position: position.in_chunk.to_vec4_left().to_array(),
+        }
     }
 }
 
-#[derive(Debug)]
-pub struct CameraController {
-    speed: f32,
+impl RotatableCamera {
+    pub fn new(width: f32, height: f32, sensitivity: f32) -> Self {
+        Self {
+            lens: RotatableLens::new(width, height),
+            rotator: CameraRotator::new(sensitivity),
+        }
+    }
+
+    pub fn update(&mut self, input_state: &InputState, dt: Duration) {
+        self.rotator.update_camera(
+            &mut self.lens.yaw_rad,
+            &mut self.lens.pitch_rad,
+            input_state,
+            dt,
+        );
+    }
+}
+
+pub struct CameraRotator {
     sensitivity: f32,
 }
 
-impl CameraController {
-    pub fn new(speed: f32, sensitivity: f32) -> Self {
-        Self { speed, sensitivity }
+impl CameraRotator {
+    pub fn new(sensitivity: f32) -> Self {
+        Self { sensitivity }
     }
 
-    pub fn set_position(camera: &mut CameraPos, position: Vec3) {
-        camera.position = position
-    }
-
+    #[inline]
     pub fn update_camera(
         &mut self,
-        camera: &mut CameraPos,
+        yaw_rad: &mut f32,
+        pitch_rad: &mut f32,
         input_state: &InputState,
         dt: Duration,
     ) {
@@ -170,59 +106,33 @@ impl CameraController {
             return;
         }
 
-        // 1. Поворот мыши (Чистый плюс: движение мыши вправо увеличивает Yaw)
-        camera.yaw_rad += input_state.raw_mouse_delta.x * self.sensitivity * dt;
+        *yaw_rad += input_state.raw_mouse_delta.x * self.sensitivity * dt;
 
-        camera.pitch_rad -= input_state.raw_mouse_delta.y * self.sensitivity * dt;
-        camera.pitch_rad = camera.pitch_rad.clamp(-1.55, 1.55);
-
-        // 2. Правильная левосторонняя тригонометрия
-        let (yaw_sin, yaw_cos) = camera.yaw_rad.sin_cos();
-        let (pitch_sin, pitch_cos) = camera.pitch_rad.sin_cos();
-
-        // Направление Вперед (Z уходит вглубь экрана при yaw = 0)
-        let forward =
-            Vec3::new(pitch_cos * yaw_sin, pitch_sin, pitch_cos * yaw_cos).normalize_or_zero();
-
-        // Направление Вправо (В ЛЕВОЙ системе: Y.cross(Forward) дает Вправо)
-        let right = Vec3::Y.cross(forward).normalize_or_zero();
-
-        // 3. Branchless получение осей
-        let get_axis = |key: KeyCode| input_state.is_down(key) as u32 as f32;
-
-        // let move_forward = get_axis(KeyCode::KeyW) - get_axis(KeyCode::KeyS);
-        // let move_right = get_axis(KeyCode::KeyD) - get_axis(KeyCode::KeyA);
-        // let move_up = get_axis(KeyCode::Space) - get_axis(KeyCode::ControlLeft);
-
-        self.speed = get_axis(KeyCode::ShiftLeft) * SPEED + SPEED;
-
-        // 4. Применение движения (Везде строгие ПЛЮСЫ)
-        // camera.position += forward * move_forward * self.speed * dt;
-        // camera.position += right * move_right * self.speed * dt;
-        // camera.position.y += move_up * self.speed * dt;
-
-        // Скролл (Движение вперед при положительном скролле)
-        camera.position +=
-            forward * input_state.mouse_scroll_delta * self.speed * self.sensitivity * dt;
+        *pitch_rad -= input_state.raw_mouse_delta.y * self.sensitivity * dt;
+        *pitch_rad = pitch_rad.clamp(-1.55, 1.55);
     }
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform {
-    // pub view_position: [f32; 4],
-    // pub view: [[f32; 4]; 4],
-    pub view_proj: [[f32; 4]; 4],
-    // pub inv_proj: [[f32; 4]; 4],
-    // pub inv_view: [[f32; 4]; 4],
+pub struct WorldCameraUniform {
+    pub proj_matrix: [[f32; 4]; 4],
+    pub view_rotation: [[f32; 4]; 4],
+    pub camera_chunk: [i32; 4],
+    pub camera_in_chunk_position: [f32; 4],
 }
+// #[repr(C)]
+// #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+// pub struct CameraUniform {
+//     pub view_proj: [[f32; 4]; 4],
+//     //     pub proj_matrix: [[f32; 4]; 4],
+//     // pub view_rotation: [[f32; 4]; 4],
+//     // pub camera_chunk: [i32; 4],
+//     // pub camera_in_chunk_position: [f32; 4],
+// }
 
-impl CameraUniform {
-    pub const IDENT: Self = Self {
-        // view_position: [0.0; 4],
-        // view: Mat4::IDENTITY.to_cols_array_2d(),
-        view_proj: Mat4::IDENTITY.to_cols_array_2d(),
-        // inv_proj: Mat4::IDENTITY.to_cols_array_2d(),
-        // inv_view: Mat4::IDENTITY.to_cols_array_2d(),
-    };
-}
+// impl CameraUniform {
+//     pub const IDENT: Self = Self {
+//         view_proj: Mat4::IDENTITY.to_cols_array_2d(),
+//     };
+// }

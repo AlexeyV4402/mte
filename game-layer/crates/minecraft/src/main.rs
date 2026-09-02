@@ -1,5 +1,5 @@
-use glam::Vec3;
-use lib_core::math::vectors::vec3::core::{Vector3};
+use glam::{Vec3, Vec4};
+use lib_core::math::vectors::vec3::core::Vector3;
 use winit::event_loop::EventLoop;
 
 use crate::app::App;
@@ -11,6 +11,7 @@ mod network;
 mod raycast;
 mod types;
 mod utils;
+mod world_generator;
 
 pub fn main() -> anyhow::Result<()> {
     unsafe { std::env::set_var("WINIT_UNIX_BACKEND", "x11") };

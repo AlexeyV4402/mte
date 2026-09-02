@@ -1,7 +1,6 @@
 [path]
 content = {path = "crate://content/", path_type = "vpath"}
-# data = {path = "crate://content/", path_type = "vpath"}
-aboba = {path = "workspace://asdfg/", path_type = "vpath"}
+data = {path = "crate://data/", path_type = "vpath"}
 
 
 [[packs]]

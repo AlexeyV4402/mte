@@ -21,3 +21,4 @@ tokio = {workspace = true}
 gltf = {workspace = true}
 bincode = {workspace = true}
 # env_logger = {worskpace = true}
+ash = {workspace = true}

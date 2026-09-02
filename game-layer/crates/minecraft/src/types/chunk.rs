@@ -1,5 +1,6 @@
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use lib_renderer::renderer::block_grid_renderer::types::BlockVertex;
+use serde::{Deserialize, Serialize};
 
 use crate::types::blocks::block::{Block, BlockType};
 use crate::types::coordinates::core::{InternalCoords, LocalCoords};
@@ -19,6 +20,7 @@ const _: () = assert!(CHUNK_SIZE == 32, "Код рассчитан на разм
 pub struct Chunk {
     pub data: [Block; CHUNK_ARRAY_LEN],
     pub vram_slot_id: Option<usize>,
+    pub is_changed: bool,
 }
 
 impl Chunk {
@@ -26,6 +28,7 @@ impl Chunk {
         Self {
             data: [Block::air(); CHUNK_ARRAY_LEN],
             vram_slot_id: None,
+            is_changed: false,
         }
     }
 
@@ -41,6 +44,7 @@ impl Chunk {
         Self {
             data,
             vram_slot_id: None,
+            is_changed: false,
         }
     }
 
@@ -59,14 +63,17 @@ impl Chunk {
         Self {
             data,
             vram_slot_id: None,
+            is_changed: false,
         }
     }
 
     pub fn set_block(&mut self, coords: LocalCoords, block: Block) {
+        self.is_changed = true;
         self.data[usize::from(coords)] = block
     }
 
     pub fn set_block_raw(&mut self, internal_coords: InternalCoords, block: Block) {
+        self.is_changed = true;
         self.data[usize::from(internal_coords)] = block;
     }
 
@@ -77,5 +84,64 @@ impl Chunk {
     pub fn get_mesh(&self) -> BlockIndexedPrimitive {
         let prerender_arr = into_prerender_array(&self.data);
         generate_mesh(&prerender_arr)
+    }
+}
+
+#[repr(C)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RleEntry {
+    pub count: u16,
+    pub block_type: u16,
+}
+
+#[repr(C)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PackedChunk {
+    pub blocks_rle: Vec<RleEntry>,
+}
+
+impl PackedChunk {
+    pub fn pack(raw_blocks: &[Block; CHUNK_ARRAY_LEN]) -> Self {
+        let mut blocks_rle = Vec::new();
+
+        let mut current_type = raw_blocks[usize::from(InternalCoords::new(0, 0, 0))].as_u16();
+        let mut current_count = 0u16;
+
+        for idx in 0..CHUNK_ARRAY_LEN {
+            let b_type = raw_blocks[idx].as_u16();
+            if b_type == current_type {
+                current_count += 1;
+            } else {
+                blocks_rle.push(RleEntry {
+                    count: current_count,
+                    block_type: current_type,
+                });
+                current_type = b_type;
+                current_count = 1;
+            }
+        }
+        blocks_rle.push(RleEntry {
+            count: current_count,
+            block_type: current_type,
+        });
+
+        Self { blocks_rle }
+    }
+
+    pub fn unpack(&self) -> [Block; CHUNK_ARRAY_LEN] {
+        let mut raw_blocks = [Block::air(); CHUNK_ARRAY_LEN];
+
+        let mut idx = 0;
+
+        for entry in &self.blocks_rle {
+            let block = Block::from_u16(entry.block_type);
+
+            for _ in 0..entry.count {
+                raw_blocks[idx] = block;
+                idx += 1;
+            }
+        }
+
+        raw_blocks
     }
 }

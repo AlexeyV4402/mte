@@ -18,6 +18,36 @@ define_blocks! {
     OakLog => { solid: true,  shape: Shape::Full, profile: AxisAligned,   textures: ["packs://pack0/oak_log_top.png", "packs://pack0/oak_log_side.png"] }
 }
 
+pub const CUBE_LINES: [[f32; 3]; 24] = [
+    // Нижний квадрат
+    [0.0, 0.0, 0.0],
+    [1.0, 0.0, 0.0],
+    [1.0, 0.0, 0.0],
+    [1.0, 0.0, 1.0],
+    [1.0, 0.0, 1.0],
+    [0.0, 0.0, 1.0],
+    [0.0, 0.0, 1.0],
+    [0.0, 0.0, 0.0],
+    // Верхний квадрат
+    [0.0, 1.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [1.0, 1.0, 1.0],
+    [1.0, 1.0, 1.0],
+    [0.0, 1.0, 1.0],
+    [0.0, 1.0, 1.0],
+    [0.0, 1.0, 0.0],
+    // Вертикальные стойки
+    [0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [1.0, 0.0, 1.0],
+    [1.0, 1.0, 1.0],
+    [0.0, 0.0, 1.0],
+    [0.0, 1.0, 1.0],
+];
+
 #[derive(Default, Clone, Copy)]
 pub struct PrerenderBlock(u32);
 
@@ -53,6 +83,10 @@ pub struct Block(u16);
 impl Block {
     pub fn as_u16(self) -> u16 {
         unsafe { std::mem::transmute::<Self, u16>(self) }
+    }
+
+    pub fn from_u16(num: u16) -> Self {
+        unsafe { std::mem::transmute::<u16, Self>(num) }
     }
 
     pub fn from_type(block_type: BlockType) -> Self {

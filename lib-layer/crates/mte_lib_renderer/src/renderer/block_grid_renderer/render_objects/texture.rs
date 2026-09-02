@@ -108,8 +108,6 @@ pub struct TextureAtlas {
 impl TextureAtlas {
     #[inline]
     pub fn get_uv_rect(&self, pixel_min: Vec2, pixel_size: Vec2) -> (Vec2, Vec2) {
-        // Делаем branchless деление векторов за один такт
-        // Инвертируем размер атласа, чтобы заменить тяжелое деление на быстрое умножение
         let inv_size = Vec2::ONE / self.atlas_size;
 
         let uv_min = pixel_min * inv_size;
@@ -124,7 +122,7 @@ impl TextureAtlas {
             size: wgpu::Extent3d {
                 width: self.atlas_size.x as u32,
                 height: self.atlas_size.y as u32,
-                depth_or_array_layers: 1, // КОЛИЧЕСТВО СЛОЕВ (ТЕКСТУР)
+                depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -142,12 +140,9 @@ impl TextureAtlas {
                 aspect: wgpu::TextureAspect::All,
             },
             rgba_bytes,
-            // Настройка разметки данных в памяти
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                // Сколько байт занимает одна строка пикселей (ширина * 4 байта RGBA)
                 bytes_per_row: Some(self.atlas_size.x as u32 * 4),
-                // Сколько байт занимает весь один слой (высота)
                 rows_per_image: Some(self.atlas_size.y as u32),
             },
             wgpu::Extent3d {
@@ -157,11 +152,10 @@ impl TextureAtlas {
             },
         );
 
-        // 3. ВАЖНО: Создаем правильный View с типом D2Array
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Voxel Texture Array View"),
             format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
-            dimension: Some(wgpu::TextureViewDimension::D2), // УКАЗЫВАЕМ, ЧТО ЭТО МАССИВ
+            dimension: Some(wgpu::TextureViewDimension::D2),
             aspect: wgpu::TextureAspect::All,
             base_mip_level: 0,
             mip_level_count: None,

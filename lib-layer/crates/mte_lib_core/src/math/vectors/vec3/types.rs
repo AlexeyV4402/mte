@@ -21,7 +21,7 @@ pub type Vec3f64 = Vector3<f64>;
 
 impl Vector3<f32> {
     #[inline(always)]
-    pub fn floor_cw(self) -> Self {
+    pub const fn floor_cw(self) -> Self {
         Self::new(self.x.floor(), self.y.floor(), self.z.floor())
     }
 }
@@ -31,7 +31,6 @@ macro_rules! impl_vector_cast {
     // Шаблон: ИсходныйТип => ЦелевойТип, имя_метода
     ($from_type:ty => $to_type:ty, $method_name:ident) => {
         impl Vector3<$from_type> {
-            /// Быстрое приведение типов для всех осей вектора за 0 тактов CPU.
             #[inline(always)]
             pub fn $method_name(self) -> Vector3<$to_type> {
                 Vector3 {
@@ -47,6 +46,7 @@ macro_rules! impl_vector_cast {
 // .as_u32()
 impl_vector_cast!(i32 => u32, as_u32);
 impl_vector_cast!(i64 => u32, as_u32);
+impl_vector_cast!(f32 => u32, as_u32);
 
 // .as_usize()
 impl_vector_cast!(i32 => usize, as_usize);

@@ -1,10 +1,11 @@
 use wgpu::wgt::DrawIndexedIndirectArgs;
 
 use super::types::BlockVertex;
+use crate::renderer::block_grid_renderer::render_objects::camera::WorldCameraUniform;
 
-pub const MAX_BUFFER_SIZE: u64 = 268435456 * 4;
+pub const MAX_BUFFER_SIZE: u64 = 268435456 * 8;
 
-pub const GLOBAL_BUFFER_SECTION_COUNT: usize = 343;
+pub const GLOBAL_BUFFER_SECTION_COUNT: usize = 1800;
 
 pub const GLOBAL_INDIRECT_BUFFER_CAPACITY: usize =
     size_of::<DrawIndexedIndirectArgs>() * GLOBAL_BUFFER_SECTION_COUNT;
@@ -38,5 +39,13 @@ pub const GLOBAL_MATRIX_BUFFER_CAPACITY: usize =
 
 const _: () = assert!(
     GLOBAL_MATRIX_BUFFER_CAPACITY <= MAX_BUFFER_SIZE as usize,
+    "Запрещено создание буферов больше 256 МБ"
+);
+
+pub const GLOBAL_VECTOR_BUFFER_CAPACITY: usize =
+    GLOBAL_BUFFER_SECTION_COUNT as usize * std::mem::size_of::<[i32; 4]>();
+
+const _: () = assert!(
+    GLOBAL_VECTOR_BUFFER_CAPACITY <= MAX_BUFFER_SIZE as usize,
     "Запрещено создание буферов больше 256 МБ"
 );
