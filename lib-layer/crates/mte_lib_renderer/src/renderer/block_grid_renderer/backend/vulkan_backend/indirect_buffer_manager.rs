@@ -10,8 +10,6 @@ use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer
 use crate::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use crate::renderer::block_grid_renderer::types::BlockVertex;
 
-static mut COUNTER: i32 = 0;
-
 pub struct StagingBufferCommand {
     pub src_offset: u64,
     pub dst_offset: u64,
@@ -82,7 +80,8 @@ impl IndirectBufferManager {
                     DrawIndexedIndirectCommand::default();
                     Self::INDIRECT_BUFFER_SLOTS_COUNT as usize
                 ],
-                indexed_indirect_buffer_free_slots: (1..Self::INDIRECT_BUFFER_SLOTS_COUNT as usize - 1)
+                indexed_indirect_buffer_free_slots: (1..Self::INDIRECT_BUFFER_SLOTS_COUNT as usize
+                    - 1)
                     .collect(),
             },
 
@@ -230,8 +229,7 @@ impl IndirectBufferManager {
 
         let matrix_alloc = self.matrix_buffer.alloc(device, mem_properties);
 
-        let mut indirect_alloc = self.indirect_buffer.alloc();
-        indirect_alloc.idx = 0;
+        let indirect_alloc = self.indirect_buffer.hand_alloc();
 
         let vert_src_offset = self.cpu_staging_buffer.len() as u64;
         self.cpu_staging_buffer.extend_from_slice(vert_bytes);
@@ -250,7 +248,7 @@ impl IndirectBufferManager {
                 first_index: (index_alloc.offset / 4) as u32,
                 vertex_offset: (vertex_alloc.offset / std::mem::size_of::<BlockVertex>() as u64)
                     as i32,
-                first_instance: matrix_alloc.slot_idx,
+                first_instance: 0,
             },
         );
 
@@ -279,7 +277,7 @@ impl IndirectBufferManager {
                 matrix_alloc.buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(mat_src_offset)
-                    .dst_offset(matrix_alloc.offset)
+                    .dst_offset(0)
                     .size(mat_bytes.len() as u64)],
             );
         }
@@ -345,7 +343,6 @@ impl IndirectBufferManager {
         self.vertex_buffer.free(data.vertex_alloc);
         self.index_buffer.free(data.index_alloc);
         self.matrix_buffer.free(data.matrix_alloc);
-        self.indirect_buffer.free(data.indirect_alloc);
     }
 }
 
@@ -374,7 +371,7 @@ pub struct IndirectBuffer {
 
 #[derive(Clone, Copy)]
 pub struct IndirectAllocData {
-    buffer: vk::Buffer,
+    _buffer: vk::Buffer,
     idx: usize,
 }
 
@@ -389,8 +386,15 @@ impl IndirectBuffer {
 
     pub fn alloc(&mut self) -> IndirectAllocData {
         return IndirectAllocData {
-            buffer: self.gpu_indexed_indirect_buffer.buffer,
+            _buffer: self.gpu_indexed_indirect_buffer.buffer,
             idx: self.indexed_indirect_buffer_free_slots.pop().unwrap(),
+        };
+    }
+
+    pub fn hand_alloc(&mut self) -> IndirectAllocData {
+        return IndirectAllocData {
+            _buffer: self.gpu_indexed_indirect_buffer.buffer,
+            idx: 0,
         };
     }
 

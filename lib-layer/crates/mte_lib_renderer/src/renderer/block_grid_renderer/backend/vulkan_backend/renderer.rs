@@ -1,30 +1,24 @@
-use std::collections::HashSet;
 use std::ffi::CStr;
 use std::sync::Arc;
 
 use ash::vk::*;
 use ash::{Entry, vk};
-use lib_core::alloc_helper::ConstPageAllocHelper;
-use mte_macros::{vfs_include_bytes, vfs_include_vk_shader};
+use glam::Mat4;
+use mte_macros::vfs_include_vk_shader;
 use wgpu::rwh::{HasDisplayHandle, HasWindowHandle};
-use winit::dpi::PhysicalSize;
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::builder::{
-    DepthBuffer, SyncObjects, TextureArrayImage, VkBuilder, create_command_pool_and_sync, upload_static_resources
+    DepthBuffer, SyncObjects, VkBuilder, create_command_pool_and_sync
 };
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::{
-    ChunkGpuHandle, IndirectBufferManager
+    ChunkGpuHandle, HandGpuHandle, IndirectBufferManager
 };
-use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_manager;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::VkBufferDataHV;
-use crate::renderer::block_grid_renderer::consts::{
-    GLOBAL_INDEX_BUFFER_CAPACITY, GLOBAL_VERTEX_BUFFER_CAPACITY
-};
-use crate::renderer::block_grid_renderer::inditect_buffer_manager;
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::descriptors::Descriptors;
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::static_data::StaticData;
 use crate::renderer::block_grid_renderer::render_objects::camera::WorldCameraUniform;
 use crate::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
-use crate::renderer::block_grid_renderer::renderer::RendererCreateArgs;
-use crate::renderer::block_grid_renderer::types::BlockVertex;
+use crate::renderer::block_grid_renderer::types::RendererCreateArgs;
 
 pub struct VkBackend {
     pub entry: Entry,
@@ -45,9 +39,10 @@ pub struct VkBackend {
     // Конвейер рендеринга
     pub render_pass: vk::RenderPass,
     pub framebuffers: Vec<vk::Framebuffer>,
-    pub pipeline_layout: vk::PipelineLayout,
-    pub graphics_pipeline: vk::Pipeline,
-
+    pub chunks_pipeline_layout: vk::PipelineLayout,
+    pub chunks_pipeline: vk::Pipeline,
+    pub hand_pipeline_layout: vk::PipelineLayout,
+    pub hand_pipeline: vk::Pipeline,
     pub cmd_pool: vk::CommandPool,
     pub sync_objects: SyncObjects,
     pub command_buffers: Vec<vk::CommandBuffer>,
@@ -60,20 +55,11 @@ pub struct VkBackend {
     pub buffer_manager: IndirectBufferManager,
 
     // Буфер для камеры на GPU (HOST_VISIBLE | HOST_COHERENT) и замаппленный указатель на него
-    pub camera_buffer: vk::Buffer,
-    pub camera_memory: vk::DeviceMemory,
-    pub camera_mapped_ptr: *mut std::ffi::c_void,
+    pub camera_buffer: VkBufferDataHV,
 
-    pub class_sampler: vk::Sampler,
-    pub global_descriptor_pool: vk::DescriptorPool,
-    pub set0_blocks: vk::DescriptorSet,
-    pub set1_camera: vk::DescriptorSet,
-    pub set2_vectors: vk::DescriptorSet,
-    pub block_properties_buffer: vk::Buffer,
-    pub block_properties_memory: vk::DeviceMemory,
+    pub descriptors: Descriptors,
 
-    pub test_slot_idx: u64,
-    pub last_frame: std::time::Instant,
+    pub static_data: StaticData,
 }
 
 impl VkBackend {
@@ -93,54 +79,10 @@ impl VkBackend {
         let hand_frag = vfs_include_vk_shader!(
             "workspace://game-layer/assets/minecraft/shaders/hand.fragment.glsl"
         );
+
         let entry = unsafe { Entry::load().unwrap() };
 
-        let version = unsafe {
-            entry
-                .try_enumerate_instance_version()
-                .expect("Error enumerate instance version")
-        };
-
-        let api_version = match version {
-            Some(version) => version,
-            None => API_VERSION_1_0,
-        };
-
-        let app_info = ApplicationInfo::default()
-            .application_name(c"Minecraft")
-            .engine_name(c"MTE")
-            .engine_version(0)
-            .application_version(0)
-            .api_version(api_version);
-
-        let instance_required_extensions = [
-            CStr::from_bytes_with_nul(b"VK_KHR_surface\0")
-                .unwrap()
-                .as_ptr(),
-            CStr::from_bytes_with_nul(b"VK_KHR_wayland_surface\0")
-                .unwrap()
-                .as_ptr(),
-        ];
-
-        let layer_names = [CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap()];
-        let layers_pointers: Vec<*const i8> = layer_names
-            .iter()
-            .map(|raw_name| raw_name.as_ptr())
-            .collect();
-
-        let instance_info = InstanceCreateInfo::default()
-            .enabled_extension_names(&instance_required_extensions)
-            .enabled_layer_names(&layers_pointers)
-            .application_info(&app_info);
-
-        let instance = unsafe {
-            entry
-                .create_instance(&instance_info, None)
-                .map_err(|e| format!("Error create insatnce with errror: {}", e))
-                .unwrap()
-        };
-
-        // let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
+        let (entry, instance) = VkBuilder::create_instance(entry);
 
         let surface: ash::vk::SurfaceKHR = unsafe {
             ash_window::create_surface(
@@ -233,7 +175,7 @@ impl VkBackend {
         let alloc_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(cmd_pool)
             .level(vk::CommandBufferLevel::PRIMARY) // PRIMARY означает, что этот буфер можно отправить напрямую в видеокарту
-            .command_buffer_count(2); // Нам нужно ровно 2 штуки (для Double Buffering)
+            .command_buffer_count(2);
 
         let command_buffers = unsafe {
             device
@@ -249,19 +191,14 @@ impl VkBackend {
             VkBuilder::create_render_pass(&device, surface_format, depth_buffer.format);
 
         for &swapchain_view in &swapchain_image_views {
-            // Порядок вложений (attachments) должен СТРОГО совпадать с порядком в вашем RenderPass!
-            // Обычно: сначала Цвет (0), потом Глубина (1)
-            let attachments = [
-                swapchain_view,    // Цветной холст свопчейна
-                depth_buffer.view, // Общий холст глубины
-            ];
+            let attachments = [swapchain_view, depth_buffer.view];
 
             let framebuffer_info = vk::FramebufferCreateInfo::default()
-                .render_pass(render_pass) // Конвейер должен знать, под какую схему рендера создается фреймбуфер
+                .render_pass(render_pass)
                 .attachments(&attachments)
-                .width(swapchain_extent.width) // Ширина под размер окна
-                .height(swapchain_extent.height) // Высота под размер окна
-                .layers(1); // Для обычного 3D-экрана всегда 1 слой
+                .width(swapchain_extent.width)
+                .height(swapchain_extent.height)
+                .layers(1);
 
             let framebuffer = unsafe {
                 device
@@ -273,193 +210,8 @@ impl VkBackend {
 
         let chunks_vert_shader_module = VkBuilder::create_shader_module(&device, chunks_vert);
         let chunks_frag_shader_module = VkBuilder::create_shader_module(&device, chunks_frag);
-        // let hand_vert_shader_module = VkBuilder::create_shader_module(&device, hand_vert);
-        // let hand_frag_shader_module = VkBuilder::create_shader_module(&device, hand_frag);
-
-        let block_sampler_info = vk::SamplerCreateInfo::default()
-            .mag_filter(vk::Filter::NEAREST)
-            .min_filter(vk::Filter::NEAREST)
-            .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
-            .address_mode_u(vk::SamplerAddressMode::REPEAT)
-            .address_mode_v(vk::SamplerAddressMode::REPEAT)
-            .address_mode_w(vk::SamplerAddressMode::REPEAT)
-            .min_lod(0.0)
-            .max_lod(32.0)
-            .anisotropy_enable(false)
-            .border_color(vk::BorderColor::INT_OPAQUE_BLACK);
-
-        let block_sampler = unsafe {
-            device
-                .create_sampler(&block_sampler_info, None)
-                .expect("Не удалось создать сэмплер для блоков")
-        };
-
-        // ====================================================================
-        // ШАГ 2: Создаем DescriptorSetLayout для каждого Set (Лейауты бинд-групп)
-        // ====================================================================
-
-        // --- LAYOUT SET 0: Статические данные блоков ---
-        let bindings_set0 = [
-            // binding = 0: Массив текстур во Фрагментном шейдере
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(0)
-                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-            // binding = 1: Сэмплер во Фрагментном шейдере
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(1)
-                .descriptor_type(vk::DescriptorType::SAMPLER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-            // binding = 2: Свойства блоков в Вершинном шейдере
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(2)
-                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::VERTEX),
-        ];
-        let layout_set0_blocks = unsafe {
-            device
-                .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings_set0),
-                    None,
-                )
-                .unwrap()
-        };
-
-        // --- LAYOUT SET 1: Данные камеры ---
-        let binding_set1 = vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::VERTEX);
-        let layout_set1_camera = unsafe {
-            device
-                .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::default()
-                        .bindings(std::slice::from_ref(&binding_set1)),
-                    None,
-                )
-                .unwrap()
-        };
-
-        // --- LAYOUT SET 2: Вектора смещения чанков ---
-        let binding_set2 = vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::VERTEX);
-        let layout_set2_vectors = unsafe {
-            device
-                .create_descriptor_set_layout(
-                    &vk::DescriptorSetLayoutCreateInfo::default()
-                        .bindings(std::slice::from_ref(&binding_set2)),
-                    None,
-                )
-                .unwrap()
-        };
-
-        // ====================================================================
-        // ШАГ 3: Создаем ОДИН ГЛОБАЛЬНЫЙ ПУЛ на весь рендерер
-        // ====================================================================
-        let pool_sizes = [
-            // Для текстуры кадра (set 0 binding 0)
-            vk::DescriptorPoolSize::default()
-                .ty(vk::DescriptorType::SAMPLED_IMAGE)
-                .descriptor_count(1),
-            // Для сэмплера (set 0 binding 1)
-            vk::DescriptorPoolSize::default()
-                .ty(vk::DescriptorType::SAMPLER)
-                .descriptor_count(1),
-            // Для двух Storage буферов (свойства блоков set 0 и вектора set 2)
-            vk::DescriptorPoolSize::default()
-                .ty(vk::DescriptorType::STORAGE_BUFFER)
-                .descriptor_count(2),
-            // Для Uniform буфера камеры (set 1)
-            vk::DescriptorPoolSize::default()
-                .ty(vk::DescriptorType::UNIFORM_BUFFER)
-                .descriptor_count(2),
-        ];
-
-        let descriptor_pool_info = vk::DescriptorPoolCreateInfo::default()
-            .max_sets(3) // Всего нарезаем ровно 3 отдельных набора (сета)
-            .pool_sizes(&pool_sizes);
-
-        let global_descriptor_pool = unsafe {
-            device
-                .create_descriptor_pool(&descriptor_pool_info, None)
-                .expect("Не удалось создать глобальный DescriptorPool")
-        };
-
-        // ====================================================================
-        // ШАГ 4: Нарезаем дескрипторные сеты (Бинд-группы)
-        // ====================================================================
-        let set_layouts = [layout_set0_blocks, layout_set1_camera, layout_set2_vectors];
-        let alloc_info = vk::DescriptorSetAllocateInfo::default()
-            .descriptor_pool(global_descriptor_pool)
-            .set_layouts(&set_layouts);
-
-        let descriptor_sets = unsafe {
-            device
-                .allocate_descriptor_sets(&alloc_info)
-                .expect("Не удалось выделить дескрипторные сеты")
-        };
-
-        let set0_blocks = descriptor_sets[0];
-        let set1_camera = descriptor_sets[1];
-        let set2_vectors = descriptor_sets[2];
-
-        // ====================================================================
-        // ШАГ 5: Создаем буфер под свойства блоков (Вместо wgpu буфера)
-        // ====================================================================
-        let block_props_size = (std::mem::size_of::<u64>()
-            * renderer_create_args.block_properties.len())
-            as vk::DeviceSize;
-        let block_props_buffer_info = vk::BufferCreateInfo::default()
-            .size(block_props_size)
-            .usage(vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-        let block_properties_buffer = unsafe {
-            device
-                .create_buffer(&block_props_buffer_info, None)
-                .unwrap()
-        };
-        let block_props_mem_reqs =
-            unsafe { device.get_buffer_memory_requirements(block_properties_buffer) };
-
-        // Ищем DEVICE_LOCAL тип памяти
-        let mut block_props_mem_type_index = 0;
-        for i in 0..memory_prop.memory_type_count {
-            if (block_props_mem_reqs.memory_type_bits & (1 << i)) != 0
-                && memory_prop.memory_types[i as usize]
-                    .property_flags
-                    .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
-            {
-                block_props_mem_type_index = i;
-                break;
-            }
-        }
-
-        let block_props_alloc_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(block_props_mem_reqs.size)
-            .memory_type_index(block_props_mem_type_index);
-
-        let block_properties_memory = unsafe {
-            device
-                .allocate_memory(&block_props_alloc_info, None)
-                .unwrap()
-        };
-        unsafe {
-            device
-                .bind_buffer_memory(block_properties_buffer, block_properties_memory, 0)
-                .unwrap()
-        };
-
-        // ====================================================================
-        // ШАГ 6: Вызываем update_descriptor_sets для связки ресурсов
-        // ====================================================================
+        let hand_vert_shader_module = VkBuilder::create_shader_module(&device, hand_vert);
+        let hand_frag_shader_module = VkBuilder::create_shader_module(&device, hand_frag);
 
         let mut buffer_manager = IndirectBufferManager::new(&device, &memory_prop);
 
@@ -471,115 +223,49 @@ impl VkBackend {
             MemoryPropertyFlags::HOST_VISIBLE | MemoryPropertyFlags::HOST_COHERENT,
         );
 
-        let (camera_buffer, camera_memory, camera_mapped_ptr) = (
-            camera_buffer.buffer,
-            camera_buffer.mem,
-            camera_buffer.mapped_ptr,
-        );
-
-        let texture_array =
-            TextureArrayImage::new(&device, &memory_prop, 16, renderer_create_args.layer_count);
-
-        let texture_view = VkBuilder::create_texture_array_view(
+        let static_data = StaticData::new(
             &device,
-            texture_array.image,
-            vk::Format::R8G8B8A8_SRGB,
+            &memory_prop,
+            renderer_create_args.block_properties.len(),
             renderer_create_args.layer_count,
         );
 
-        // Допустим, у тебя уже есть texture_view от загруженного массива текстур
-        let texture_image_info = vk::DescriptorImageInfo::default()
-            .image_view(texture_view)
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-
-        let sampler_image_info = vk::DescriptorImageInfo::default().sampler(block_sampler);
-
-        let block_props_buffer_info = vk::DescriptorBufferInfo::default()
-            .buffer(block_properties_buffer)
-            .offset(0)
-            .range(vk::WHOLE_SIZE);
-
-        let camera_buffer_info = vk::DescriptorBufferInfo::default()
-            .buffer(camera_buffer) // Из твоего метода создания буфера камеры
-            .offset(0)
-            .range(vk::WHOLE_SIZE);
-
-        let vectors_buffer_info = vk::DescriptorBufferInfo::default()
-            .buffer(buffer_manager.vector_buffer.gpu_buffers[0].buffer) // Из твоего менеджера буферов
-            .offset(0)
-            .range(vk::WHOLE_SIZE);
-
-        let writes = [
-            // --- SET 0 ---
-            vk::WriteDescriptorSet::default()
-                .dst_set(set0_blocks)
-                .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                .image_info(std::slice::from_ref(&texture_image_info)),
-            vk::WriteDescriptorSet::default()
-                .dst_set(set0_blocks)
-                .dst_binding(1)
-                .descriptor_type(vk::DescriptorType::SAMPLER)
-                .image_info(std::slice::from_ref(&sampler_image_info)),
-            vk::WriteDescriptorSet::default()
-                .dst_set(set0_blocks)
-                .dst_binding(2)
-                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                .buffer_info(std::slice::from_ref(&block_props_buffer_info)),
-            // --- SET 1 ---
-            vk::WriteDescriptorSet::default()
-                .dst_set(set1_camera)
-                .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(std::slice::from_ref(&camera_buffer_info)),
-            // --- SET 2 ---
-            vk::WriteDescriptorSet::default()
-                .dst_set(set2_vectors)
-                .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(std::slice::from_ref(&vectors_buffer_info)),
-        ];
-        unsafe {
-            device.update_descriptor_sets(&writes, &[]);
-        }
-
-        let pipeline_layout = VkBuilder::create_pipeline_layout(&device, &set_layouts);
-
-        let vertex_binding_descriptions = [
-            vk::VertexInputBindingDescription::default()
-                .binding(0) // Индекс буфера (обычно 0)
-                .stride(std::mem::size_of::<BlockVertex>() as u32) // Шаг в байтах (20 байт)
-                .input_rate(vk::VertexInputRate::VERTEX), // Шагаем по вершинам (не по инстансам)
-        ];
-
-        // 2. Описываем аттрибуты (поля внутри структуры)
-        let vertex_attribute_descriptions = [
-            // layout(location = 0) in vec3 position;
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(0) // Должно совпадать с location в GLSL шейдере!
-                .format(vk::Format::R32_UINT) // vec3 из f32
-                .offset(0), // Начинается с самого начала структуры
-        ];
-
-        let graphics_pipeline = VkBuilder::create_graphics_pipeline(
+        let descriptors = Descriptors::new(
             &device,
-            pipeline_layout,
+            &static_data,
+            camera_buffer.buffer,
+            buffer_manager.vector_buffer.gpu_buffers[0].buffer,
+            buffer_manager.matrix_buffer.gpu_buffers[0].buffer,
+        );
+
+        let chunks_pipeline_layout = VkBuilder::create_pipeline_layout(&device, &descriptors.chunks_layouts());
+
+        let chunks_pipeline = VkBuilder::create_graphics_pipeline(
+            &device,
+            chunks_pipeline_layout,
             render_pass,
             chunks_vert_shader_module,
             chunks_frag_shader_module,
-            vertex_binding_descriptions.as_slice(),
-            vertex_attribute_descriptions.as_slice(),
+        );
+
+        let hand_pipeline_layout = VkBuilder::create_pipeline_layout_with_push_const_range(&device, &descriptors.hand_layouts(), 64);
+
+        let hand_pipeline = VkBuilder::create_graphics_pipeline(
+            &device,
+            hand_pipeline_layout,
+            render_pass,
+            hand_vert_shader_module,
+            hand_frag_shader_module,
         );
 
         unsafe {
-            upload_static_resources(
+            StaticData::upload(
                 &device,
                 main_graphics_queue,
                 cmd_pool,
                 &mut buffer_manager,
-                block_properties_buffer,
-                texture_array.image,
+                static_data.block_properties_buffer.buffer,
+                static_data.texture_array.image,
                 renderer_create_args.block_properties,
                 16,
                 renderer_create_args.layer_count,
@@ -601,8 +287,10 @@ impl VkBackend {
             depth_buffer,
             render_pass,
             framebuffers,
-            pipeline_layout,
-            graphics_pipeline,
+            chunks_pipeline_layout,
+            chunks_pipeline,
+            hand_pipeline_layout,
+            hand_pipeline,
             cmd_pool,
             sync_objects,
             command_buffers,
@@ -610,17 +298,8 @@ impl VkBackend {
             image_index: 0,
             buffer_manager,
             camera_buffer,
-            camera_memory,
-            camera_mapped_ptr,
-            class_sampler: block_sampler,
-            global_descriptor_pool,
-            set0_blocks,
-            set1_camera,
-            set2_vectors,
-            block_properties_buffer,
-            block_properties_memory,
-            test_slot_idx: Default::default(),
-            last_frame: std::time::Instant::now(),
+            descriptors,
+            static_data,
         }
     }
 
@@ -740,10 +419,36 @@ impl VkBackend {
             vector,
             &self.device,
             &self.memory_prop,
-            current_cmd, // Передаем общий буфер кадра вместо одноразового мусора!
+            current_cmd,
         );
 
         handle
+    }
+
+    pub fn load_hand(
+        &mut self,
+        primitive: BlockIndexedPrimitive,
+        matrix: [[f32; 4]; 4],
+    ) -> Option<HandGpuHandle> {
+        let current_cmd = self.command_buffers[self.current_frame];
+
+        let handle = self.buffer_manager.load_hand(
+            primitive,
+            matrix,
+            &self.device,
+            &self.memory_prop,
+            current_cmd,
+        );
+
+        handle
+    }
+
+    pub fn load_unhand(
+        &mut self,
+        data: HandGpuHandle,
+    ) {
+        self.buffer_manager.unload_hand(data);
+
     }
 
     pub fn begin_frame(&mut self) {
@@ -788,7 +493,7 @@ impl VkBackend {
         self.buffer_manager.unload_chunk(handle);
     }
 
-    pub fn end_frame(&mut self) -> std::result::Result<(), ash::vk::Result> {
+    pub fn end_frame(&mut self, hand_mat: [[f32; 4]; 4]) -> std::result::Result<(), ash::vk::Result> {
         let frame = self.current_frame;
         let img_idx = self.image_index as usize;
         let cmd = self.command_buffers[frame];
@@ -910,29 +615,7 @@ impl VkBackend {
             // ====================================================================
             // ШАГ 4: ВКЛЮЧАЕМ КОНВЕЙЕР И ДЕСКРИПТОРЫ
             // ====================================================================
-            // Активируем запеченный графический конвейер блоков
-            self.device.cmd_bind_pipeline(
-                cmd,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.graphics_pipeline,
-            );
 
-            // Собираем массив наших бинд-групп (Set 0, Set 1, Set 2)
-            let sets = [self.set0_blocks, self.set1_camera, self.set2_vectors];
-
-            // Подключаем все дескрипторы разом к конвейеру
-            self.device.cmd_bind_descriptor_sets(
-                cmd,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline_layout,
-                0, // Начинаем привязку строго с set = 0
-                &sets,
-                &[],
-            );
-
-            // ====================================================================
-            // ШАГ 5: ЖЕЛЕЗНЫЙ МУЛЬТИ-ДРОУ ВЫЗОВ (ОТРИСОВКА МИРА)
-            // ====================================================================
             self.device.cmd_bind_vertex_buffers(
                 cmd,
                 0,
@@ -940,7 +623,6 @@ impl VkBackend {
                 &[0],
             );
 
-            // Привязываем гигантский индексный буфер (под u32 индексы)
             self.device.cmd_bind_index_buffer(
                 cmd,
                 self.buffer_manager.index_buffer.gpu_buffers[0].buffer,
@@ -948,16 +630,79 @@ impl VkBackend {
                 vk::IndexType::UINT32,
             );
 
+            self.device.cmd_bind_pipeline(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.chunks_pipeline,
+            );
+
+            self.device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.chunks_pipeline_layout,
+                0,
+                &self.descriptors.chunks_sets(),
+                &[],
+            );
+
+            // ====================================================================
+            // ШАГ 5: ЖЕЛЕЗНЫЙ МУЛЬТИ-ДРОУ ВЫЗОВ (ОТРИСОВКА МИРА)
+            // ====================================================================
+
+            let stride = std::mem::size_of::<vk::DrawIndexedIndirectCommand>() as u32;
+            let total_slots = self
+                .buffer_manager
+                .indirect_buffer
+                .cpu_indexed_indirect_buffer
+                .len() as u32;
+
                 self.device.cmd_draw_indexed_indirect(
                     cmd,
                     self.buffer_manager
                         .indirect_buffer
                         .gpu_indexed_indirect_buffer
                         .buffer,
-                    0,
-                    self.buffer_manager.indirect_buffer.cpu_indexed_indirect_buffer.len() as u32,
-                    std::mem::size_of::<vk::DrawIndexedIndirectCommand>() as u32,
+                    stride as vk::DeviceSize,
+                    total_slots - 1,
+                    stride,
                 );
+
+            let clear_attachment = vk::ClearAttachment::default()
+                .aspect_mask(vk::ImageAspectFlags::DEPTH) // Стираем только карту глубины кадра
+                .clear_value(vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 }
+                });
+
+            let clear_rect = vk::ClearRect::default()
+                .rect(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: self.swapchain_extent })
+                .layer_count(1);
+
+            self.device.cmd_clear_attachments(cmd, &[clear_attachment], &[clear_rect]);
+
+            // Включаем конвейер руки
+            self.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.hand_pipeline);
+
+            self.device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.hand_pipeline_layout,
+                0,
+                &self.descriptors.hand_sets(),
+                &[],
+            );
+
+            // ТОЛКАЕМ МАТРИЦУ РУКИ НА GPU (Push-константы)
+            let hand_bytes = bytemuck::cast_slice(&hand_mat);
+            self.device.cmd_push_constants(cmd, self.hand_pipeline_layout, vk::ShaderStageFlags::VERTEX, 0, &hand_bytes);
+
+            // Вызываем INDIRECT-отрисовку руки из САМОГО НАЧАЛА буфера (Слот №0)
+            self.device.cmd_draw_indexed_indirect(
+                cmd,
+                self.buffer_manager.indirect_buffer.gpu_indexed_indirect_buffer.buffer,
+                0, // Смещение 0 байт — читаем строго Слот №0!
+                1, // Рисуем строго одну команду (нашу руку)
+                stride,
+            );
 
             // Выходим из Render Pass и закрываем «блокнот» команд кадра
             self.device.cmd_end_render_pass(cmd);
@@ -1000,8 +745,6 @@ impl VkBackend {
             self.swapchain_loader
                 .queue_present(self.graphics_queue, &present_info)
                 .unwrap();
-            // self.last_frame = std::time::Instant::now();
-            // println!("slot_idx: {};Запуск очереди", self.test_slot_idx,);
         }
 
         unsafe {
@@ -1014,13 +757,6 @@ impl VkBackend {
                 .unwrap();
         }
 
-        // println!(
-        //     "slot_idx: {};Завершение очереди: {}",
-        //     self.test_slot_idx,
-        //     self.last_frame.elapsed().as_micros()
-        // );
-        // self.test_slot_idx = (self.test_slot_idx + 1) % 257;
-
         self.current_frame = (self.current_frame + 1) % 2;
 
         std::result::Result::Ok(())
@@ -1030,7 +766,7 @@ impl VkBackend {
         unsafe {
             std::ptr::copy_nonoverlapping(
                 &pass_1_camera_uniform as *const WorldCameraUniform,
-                self.camera_mapped_ptr as *mut WorldCameraUniform,
+                self.camera_buffer.mapped_ptr as *mut WorldCameraUniform,
                 1,
             );
         }

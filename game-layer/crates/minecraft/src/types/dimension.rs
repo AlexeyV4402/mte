@@ -1,7 +1,6 @@
 use std::time::Instant;
 use std::{array, mem};
 
-use lib_renderer::renderer::block_grid_renderer::Renderer;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};

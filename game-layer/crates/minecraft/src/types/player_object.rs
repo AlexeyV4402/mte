@@ -5,7 +5,8 @@ use glam::{Mat4, Vec3};
 use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::core::Vector3;
 use lib_io::user_io::InputState;
-use lib_renderer::renderer::block_grid_renderer::Renderer;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::HandGpuHandle;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::camera::{
     RotatableCamera, WorldCameraUniform
 };
@@ -24,6 +25,7 @@ pub struct PlayerObject {
     hand_item: Item,
     pub camera: RotatableCamera,
     hand_dirty: bool,
+    hand_gpu_handle: Option<HandGpuHandle>,
 }
 
 const MOVE_FORCE: f32 = 200.0;
@@ -45,6 +47,8 @@ impl PlayerObject {
             ),
             camera,
             hand_dirty: true,
+            hand_gpu_handle: None,
+            
         }
     }
 
@@ -66,7 +70,7 @@ impl PlayerObject {
 
         let move_up =
             (input_state.is_down(KeyCode::Space) && self.physic_body.on_ground()) as u32 as f32;
-        
+
         // let move_up = get_axis(KeyCode::Space) - get_axis(KeyCode::ShiftLeft);
         // let up = Vec3::Y;
         // let move_force = 0.1;
@@ -146,9 +150,13 @@ impl PlayerObject {
         self.camera.lens.get_proj_mat().to_cols_array_2d()
     }
 
-    pub fn update_inventory_meshes(&mut self, renderer: &mut Renderer) {
+    pub fn update_inventory_meshes(&mut self, renderer: &mut VkBackend) {
         if self.hand_dirty {
-            // renderer.buffer_manager.unload_mesh(0);
+            if let Some(data) = self.hand_gpu_handle {
+                renderer.buffer_manager.unload_hand(data);
+            }
+            
+
             let hand_offset = Vec3::new(0.2, -0.4, 1.5);
 
             // Матрица модели для руки — это просто сдвиг на этот вектор!
@@ -163,10 +171,9 @@ impl PlayerObject {
 
             // println!("Матрица модели: {}", final_hand_model);
 
-            renderer.buffer_manager.write_with_matrix(
-                0,
-                &self.hand_item.item_type.get_hand_model(),
-                &final_hand_model.to_cols_array_2d(),
+            renderer.load_hand(
+                self.hand_item.item_type.get_hand_model(),
+                final_hand_model.to_cols_array_2d(),
             );
             self.hand_dirty = false;
         }

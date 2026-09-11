@@ -1,5 +1,3 @@
-use glam::{Vec3, Vec4};
-use lib_core::math::vectors::vec3::core::Vector3;
 use winit::event_loop::EventLoop;
 
 use crate::app::App;

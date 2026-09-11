@@ -39,7 +39,12 @@ impl RotatableLens {
     }
 
     pub fn get_proj_mat(&self) -> Mat4 {
-        glam::camera::lh::proj::vulkan::perspective(self.fovy_rad, self.aspect, self.znear, self.zfar)
+        glam::camera::lh::proj::vulkan::perspective(
+            self.fovy_rad,
+            self.aspect,
+            self.znear,
+            self.zfar,
+        )
     }
 
     pub fn get_view_rotation_mat(&self) -> Mat4 {

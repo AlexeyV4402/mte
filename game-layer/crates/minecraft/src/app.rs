@@ -1,38 +1,22 @@
 use std::sync::Arc;
-use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use glam::{I64Vec3, IVec3, Vec3};
-use lib_core::math::vectors::custom::PrecisePositionC32;
-use lib_core::math::vectors::vec3::types::{Vec3f32, Vec3i32};
 use lib_io::user_io::InputState;
-use lib_renderer::context::render_context::RenderContext;
-use lib_renderer::renderer::block_grid_renderer::Renderer;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
-use lib_renderer::renderer::block_grid_renderer::render_objects::camera::RotatableCamera;
-use lib_renderer::renderer::block_grid_renderer::render_objects::outline::OutlineUniform;
-use lib_renderer::renderer::block_grid_renderer::renderer::RendererCreateArgs;
+use lib_renderer::renderer::block_grid_renderer::types::RendererCreateArgs;
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalPosition;
-use winit::event::{DeviceEvent, DeviceId, MouseButton, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use winit::keyboard::KeyCode::{Escape, F1, F11};
-use winit::monitor;
+use winit::keyboard::KeyCode::F11;
 use winit::window::{CursorGrabMode, Window, WindowAttributes};
 
-use crate::raycast::raycast;
-use crate::types;
 use crate::types::blocks::block::{
-    BLOCK_PROPERTIES_REGISTRY, Block, CUBE_LINES, REGISTERED_TEXTURES_COUNT
+    BLOCK_PROPERTIES_REGISTRY, CUBE_LINES, REGISTERED_TEXTURES_COUNT
 };
-use crate::types::coordinates::core::{ChunkCoords, GlobalCoords};
-use crate::types::dimension::Dimension;
-use crate::types::player_object::PlayerObject;
 use crate::types::world::World;
-use crate::world_generator::{SuperSimplexGenerator, WorldGenerator};
+use crate::world_generator::SuperSimplexGenerator;
 
 pub struct App {
-    renderer: Option<Renderer>,
     vk_backend: Option<VkBackend>,
     input_state: InputState,
     last_time: Instant,
@@ -45,7 +29,6 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
-            renderer: None,
             vk_backend: None,
             input_state: Default::default(),
             last_time: Instant::now(),
@@ -102,11 +85,6 @@ impl ApplicationHandler<()> for App {
         self.last_time = Instant::now();
         self.input_state.handle_window_event(&event);
 
-        // let renderer = match &mut self.renderer {
-        //     Some(canvas) => canvas,
-        //     None => return,
-        // };
-
         let renderer = match &mut self.vk_backend {
             Some(canvas) => canvas,
             None => return,
@@ -117,19 +95,19 @@ impl ApplicationHandler<()> for App {
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => {
-            //     renderer.resize(
-            //     size.width,
-            //     size.height,
-            //     &mut self.world.player_object.camera.lens,
-            // )
-            },
-            
+                //     renderer.resize(
+                //     size.width,
+                //     size.height,
+                //     &mut self.world.player_object.camera.lens,
+                // )
+            }
+
             WindowEvent::RedrawRequested => {
                 if !self.paused {
                     renderer.begin_frame();
                     self.world.update_meshes(renderer);
                     renderer.update_camera(self.world.player_object.get_camera_world_uniform());
-                    renderer.end_frame().unwrap();
+                    renderer.end_frame(self.world.player_object.get_camera_hand_uniform()).unwrap();
                 }
             }
             _ => {}
@@ -140,17 +118,6 @@ impl ApplicationHandler<()> for App {
         let dt = self.last_time.elapsed();
         self.last_time = Instant::now();
 
-        // let renderer = match &mut self.renderer {
-        //     Some(canvas) => canvas,
-        //     None => return,
-        // };
-
-        let renderer = match &mut self.vk_backend {
-            Some(canvas) => canvas,
-            None => return,
-        };
-
-        // let window = &renderer.render_context.window_contexts[0].window.clone();
         let window = match &self.window {
             Some(window) => window,
             None => return,

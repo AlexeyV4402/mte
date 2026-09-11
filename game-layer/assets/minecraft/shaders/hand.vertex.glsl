@@ -24,11 +24,11 @@ layout(set = 0, binding = 2, std430) readonly buffer BlockProperties {
     BlockProperty block_properties[];
 };
 
-layout(set = 1, binding = 0, std140) uniform ProjUniform {
+layout(push_constant) uniform HandData {
     mat4 proj;
-};
+} hand;
 
-layout(set = 2, binding = 0, std430) uniform Matrices {
+layout(set = 1, binding = 0, std430) uniform Matrices {
     mat4 matrices[1];
 };
 
@@ -72,7 +72,7 @@ void main() {
 
     // 3. Расчет позиции через матрицу инстанса и проекцию
     mat4 model_matrix = matrices[instance_idx];
-    gl_Position = proj * model_matrix * vec4(local_x, local_y, local_z, 1.0);
+    gl_Position = hand.proj * model_matrix * vec4(local_x, local_y, local_z, 1.0);
 
     // 4. Считаем UV по локальным координатам, чтобы трипланарка не плыла
     if (side_id == SIDE_TOP || side_id == SIDE_BOTTOM) {

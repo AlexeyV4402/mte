@@ -4,7 +4,6 @@ use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::core::Vector3;
 use lib_core::math::vectors::vec3::types::{Vec3f32, Vec3i32};
 use lib_io::user_io::InputState;
-use lib_renderer::renderer::block_grid_renderer::Renderer;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::camera::RotatableCamera;
 use winit::keyboard::KeyCode;
@@ -106,7 +105,7 @@ impl<G: WorldGenerator> World<G> {
             .prepare_chunks(&self.overworld_generator, &self.overworld_save_manager);
         self.overworld.save_chunks(&mut self.overworld_save_manager);
         self.overworld.update_chunk_meshes(renderer);
-        // self.player_object.update_inventory_meshes(renderer);
+        self.player_object.update_inventory_meshes(renderer);
     }
 
     pub fn show_chunk(&mut self, chunk: ChunkCoords) {

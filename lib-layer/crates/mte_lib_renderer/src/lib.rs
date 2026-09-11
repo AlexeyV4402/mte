@@ -1,12 +1,4 @@
-// pub mod camera;
-pub mod context;
 pub mod loader;
 pub mod pipelines;
 pub mod render_objects;
 pub mod renderer;
-// pub mod scene;
-// pub mod texture;
-// pub mod hdr;
-// pub mod resources;
-// pub mod model;
-// pub mod instance;

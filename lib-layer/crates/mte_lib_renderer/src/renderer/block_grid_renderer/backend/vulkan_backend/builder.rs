@@ -1,13 +1,14 @@
 use std::collections::HashSet;
 use std::ffi::CStr;
 
-use ash::vk;
 use ash::vk::*;
+use ash::{Entry, vk};
 use mte_macros::vfs_include_bytes;
 use winit::dpi::PhysicalSize;
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::IndirectBufferManager;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::find_memory_type;
+use crate::renderer::block_grid_renderer::types::BlockVertex;
 
 pub struct VkBuilder {}
 
@@ -79,14 +80,27 @@ impl VkBuilder {
         device: &ash::Device,
         layouts: &[DescriptorSetLayout],
     ) -> vk::PipelineLayout {
-        // 64 байта под mat4 (матрица камеры)
-        // let push_constant_range = vk::PushConstantRange::default()
-        //     .stage_flags(vk::ShaderStageFlags::VERTEX)
-        //     .offset(0)
-        //     .size(64);
+        let create_info = vk::PipelineLayoutCreateInfo::default().set_layouts(layouts);
 
-        let create_info = vk::PipelineLayoutCreateInfo::default().set_layouts(layouts); // Для текстур Layout-ы добавишь сюда позже
-        // .push_constant_ranges(std::slice::from_ref(&push_constant_range));
+        unsafe {
+            device
+                .create_pipeline_layout(&create_info, None)
+                .expect("Не удалось создать PipelineLayout")
+        }
+    }
+    
+    pub fn create_pipeline_layout_with_push_const_range(
+        device: &ash::Device,
+        layouts: &[DescriptorSetLayout],
+        size: u32
+    ) -> vk::PipelineLayout {
+        // 64 байта под mat4 (матрица камеры)
+        let push_constant_range = vk::PushConstantRange::default()
+            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .offset(0)
+            .size(size);
+        let create_info = vk::PipelineLayoutCreateInfo::default().set_layouts(layouts) 
+        .push_constant_ranges(std::slice::from_ref(&push_constant_range));
 
         unsafe {
             device
@@ -101,9 +115,18 @@ impl VkBuilder {
         render_pass: vk::RenderPass,
         vert_module: vk::ShaderModule,
         frag_module: vk::ShaderModule,
-        vertex_bindings: &[vk::VertexInputBindingDescription],
-        vertex_attributes: &[vk::VertexInputAttributeDescription],
     ) -> vk::Pipeline {
+        let vertex_bindings = [vk::VertexInputBindingDescription::default()
+            .binding(0)
+            .stride(std::mem::size_of::<BlockVertex>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX)];
+
+        let vertex_attributes = [vk::VertexInputAttributeDescription::default()
+            .binding(0)
+            .location(0)
+            .format(vk::Format::R32_UINT)
+            .offset(0)];
+
         let main_entry = std::ffi::CStr::from_bytes_with_nul(b"main\0").unwrap();
 
         let shader_stages = [
@@ -118,8 +141,8 @@ impl VkBuilder {
         ];
 
         let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::default()
-            .vertex_binding_descriptions(vertex_bindings)
-            .vertex_attribute_descriptions(vertex_attributes);
+            .vertex_binding_descriptions(&vertex_bindings)
+            .vertex_attribute_descriptions(&vertex_attributes);
 
         let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
@@ -162,7 +185,7 @@ impl VkBuilder {
             vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
         let depth_stencil_info = vk::PipelineDepthStencilStateCreateInfo::default()
-            .depth_test_enable(true) 
+            .depth_test_enable(true)
             .depth_write_enable(true)
             .depth_compare_op(vk::CompareOp::LESS);
 
@@ -454,6 +477,55 @@ impl VkBuilder {
                 .expect("Не удалось создать ImageView для массива текстур")
         }
     }
+
+    pub fn create_instance(entry: Entry) -> (Entry, ash::Instance) {
+        let version = unsafe {
+            entry
+                .try_enumerate_instance_version()
+                .expect("Error enumerate instance version")
+        };
+
+        let api_version = match version {
+            Some(version) => version,
+            None => API_VERSION_1_0,
+        };
+
+        let app_info = ApplicationInfo::default()
+            .application_name(c"Minecraft")
+            .engine_name(c"MTE")
+            .engine_version(0)
+            .application_version(0)
+            .api_version(api_version);
+
+        let instance_required_extensions = [
+            CStr::from_bytes_with_nul(b"VK_KHR_surface\0")
+                .unwrap()
+                .as_ptr(),
+            CStr::from_bytes_with_nul(b"VK_KHR_wayland_surface\0")
+                .unwrap()
+                .as_ptr(),
+        ];
+
+        let layer_names = [CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap()];
+        let layers_pointers: Vec<*const i8> = layer_names
+            .iter()
+            .map(|raw_name| raw_name.as_ptr())
+            .collect();
+
+        let instance_info = InstanceCreateInfo::default()
+            .enabled_extension_names(&instance_required_extensions)
+            .enabled_layer_names(&layers_pointers)
+            .application_info(&app_info);
+
+        let instance = unsafe {
+            entry
+                .create_instance(&instance_info, None)
+                .map_err(|e| format!("Error create insatnce with errror: {}", e))
+                .unwrap()
+        };
+
+        (entry, instance)
+    }
 }
 
 pub struct DepthBuffer {
@@ -660,198 +732,4 @@ impl TextureArrayImage {
 
         Self { image, memory }
     }
-}
-
-pub unsafe fn upload_static_resources(
-    device: &ash::Device,
-    graphics_queue: vk::Queue,
-    command_pool: vk::CommandPool,
-    buffer_manager: &mut IndirectBufferManager, // Твой менеджер буферов
-    dst_block_properties_buffer: vk::Buffer,    // Целевой буфер свойств блоков на GPU
-    dst_texture_image: vk::Image,               // Целевая текстура на GPU
-    block_properties_data: &[u8],               // Массив свойств блоков из Rust
-    texture_resolution: u32,                    // Например, 16
-    layer_count: u32,
-) {
-    let image_bytes = vfs_include_bytes!("workspace://game-layer/crates/minecraft/content/000001");
-
-    let staging_buffer = &mut buffer_manager.cpu_staging_buffer;
-
-    // --- ШАГ А: Загружаем свойства блоков в стейджинг ---
-    let props_src_offset = staging_buffer.len() as vk::DeviceSize;
-    staging_buffer.extend_from_slice(block_properties_data);
-
-    // Выравниваем хвост перед записью текстуры, чтобы адрес делился на 4
-    while staging_buffer.len() % 4 != 0 {
-        staging_buffer.push(0);
-    }
-
-    // --- ШАГ Б: Загружаем пиксели текстуры в стейджинг (сразу следом) ---
-    let texture_src_offset = staging_buffer.len() as vk::DeviceSize;
-    staging_buffer.extend_from_slice(image_bytes);
-
-    let gpu_staging_buffer_vk = buffer_manager.gpu_staging_buffer.buffer;
-
-    // Переносим данные из cpu_staging_buffer (Vec<u8>) в gpu_staging_buffer (Host-Visible память)
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            buffer_manager.cpu_staging_buffer.as_ptr() as *const std::ffi::c_void,
-            buffer_manager.gpu_staging_buffer.mapped_ptr,
-            buffer_manager.cpu_staging_buffer.len(),
-        );
-    }
-
-    // ====================================================================
-    // 2. ОТКРЫВАЕМ ОДНОРАЗОВЫЙ КОМАНДНЫЙ БУФЕР ДЛЯ КОПИРОВАНИЯ НА GPU
-    // ====================================================================
-    let cmd_alloc_info = vk::CommandBufferAllocateInfo::default()
-        .command_pool(command_pool)
-        .level(vk::CommandBufferLevel::PRIMARY)
-        .command_buffer_count(1);
-    let cmd = unsafe { device.allocate_command_buffers(&cmd_alloc_info).unwrap() };
-
-    let begin_info =
-        vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-    unsafe { device.begin_command_buffer(cmd[0], &begin_info).unwrap() };
-
-    // ====================================================================
-    // 3. КОПИРОВАНИЕ БУФЕРА СВОЙСТВ БЛОКОВ
-    // ====================================================================
-    let props_copy_region = vk::BufferCopy::default()
-        .src_offset(props_src_offset)
-        .dst_offset(0)
-        .size(block_properties_data.len() as vk::DeviceSize);
-
-    unsafe {
-        device.cmd_copy_buffer(
-            cmd[0],
-            gpu_staging_buffer_vk,
-            dst_block_properties_buffer,
-            &[props_copy_region],
-        )
-    };
-
-    // Барьер памяти для буфера свойств блоков (Буфер должен перейти из TRANSFER_WRITE в SHADER_READ)
-    let buffer_barrier = vk::BufferMemoryBarrier::default()
-        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-        .dst_access_mask(vk::AccessFlags::SHADER_READ)
-        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-        .buffer(dst_block_properties_buffer)
-        .offset(0)
-        .size(vk::WHOLE_SIZE);
-
-    // ====================================================================
-    // 4. КОПИРОВАНИЕ МАССИВА ТЕКСТУР (IMAGE)
-    // ====================================================================
-
-    // Переводим текстуру из UNDEFINED в статус TRANSFER_DST_OPTIMAL (цель копирования)
-    let barrier_to_transfer = vk::ImageMemoryBarrier::default()
-        .old_layout(vk::ImageLayout::UNDEFINED)
-        .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-        .src_access_mask(vk::AccessFlags::empty())
-        .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-        .image(dst_texture_image)
-        .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count,
-        });
-
-    // Применяем барьер для текстуры и свойства буфера одновременно
-    unsafe {
-        device.cmd_pipeline_barrier(
-            cmd[0],
-            vk::PipelineStageFlags::TOP_OF_PIPE | vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::DependencyFlags::empty(),
-            &[],
-            &[],
-            &[barrier_to_transfer],
-        )
-    };
-
-    // Описываем слои для копирования в texture2DArray
-    let image_subresource = vk::ImageSubresourceLayers::default()
-        .aspect_mask(vk::ImageAspectFlags::COLOR)
-        .mip_level(0)
-        .base_array_layer(0)
-        .layer_count(layer_count);
-
-    let image_copy_region = vk::BufferImageCopy::default()
-        .buffer_offset(texture_src_offset) // Смещение пикселей внутри твоего стейджинга
-        .buffer_row_length(0)
-        .buffer_image_height(0)
-        .image_subresource(image_subresource)
-        .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-        .image_extent(vk::Extent3D {
-            width: texture_resolution,
-            height: texture_resolution,
-            depth: 1,
-        });
-
-    unsafe {
-        device.cmd_copy_buffer_to_image(
-            cmd[0],
-            gpu_staging_buffer_vk,
-            dst_texture_image,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            &[image_copy_region],
-        )
-    };
-
-    // Переводим текстуру в финальный лейаут SHADER_READ_ONLY_OPTIMAL для чтения во фрагментном шейдере
-    let barrier_to_shader = vk::ImageMemoryBarrier::default()
-        .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-        .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-        .dst_access_mask(vk::AccessFlags::SHADER_READ)
-        .image(dst_texture_image)
-        .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count,
-        });
-
-    // Финальная синхронизация: открываем данные для шейдеров (Свойства блоков для VERTEX, текстуры для FRAGMENT)
-    unsafe {
-        device.cmd_pipeline_barrier(
-            cmd[0],
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::FRAGMENT_SHADER,
-            vk::DependencyFlags::empty(),
-            &[],
-            &[buffer_barrier],    // Защищаем буфер свойств
-            &[barrier_to_shader], // Защищаем текстуру
-        )
-    };
-
-    unsafe { device.end_command_buffer(cmd[0]).unwrap() };
-
-    // Отправляем в очередь и синхронно ждем окончания выполнения на GPU
-    let fence_info = vk::FenceCreateInfo::default();
-    let fence = unsafe { device.create_fence(&fence_info, None).unwrap() };
-    unsafe {
-        device
-            .queue_submit(
-                graphics_queue,
-                &[vk::SubmitInfo::default().command_buffers(&[cmd[0]])],
-                fence,
-            )
-            .unwrap();
-        device.wait_for_fences(&[fence], true, u64::MAX).unwrap();
-    };
-
-    // Освобождаем временные ресурсы одноразовой команды
-    unsafe {
-        device.destroy_fence(fence, None);
-        device.free_command_buffers(command_pool, &[cmd[0]]);
-    }
-
-    // Очищаем стейджинг буфер на CPU, он готов к работе с чанками в игровом цикле
-    buffer_manager.cpu_staging_buffer.clear();
 }
