@@ -3,11 +3,12 @@ use std::time::Instant;
 
 use lib_io::user_io::InputState;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
+use lib_renderer::renderer::block_grid_renderer::render_objects::camera::RotatableLens;
 use lib_renderer::renderer::block_grid_renderer::types::RendererCreateArgs;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use winit::keyboard::KeyCode::F11;
+use winit::keyboard::KeyCode::{Escape, F1, F11};
 use winit::window::{CursorGrabMode, Window, WindowAttributes};
 
 use crate::types::blocks::block::{
@@ -95,11 +96,11 @@ impl ApplicationHandler<()> for App {
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => {
-                //     renderer.resize(
-                //     size.width,
-                //     size.height,
-                //     &mut self.world.player_object.camera.lens,
-                // )
+                self.world.player_object.camera.lens = RotatableLens::new(size.width as f32, size.height as f32);
+                    renderer.resize(
+                    size.width,
+                    size.height,
+                )
             }
 
             WindowEvent::RedrawRequested => {
@@ -133,33 +134,33 @@ impl ApplicationHandler<()> for App {
             }
         }
 
-        // if self.input_state.is_just_pressed(F1) {
-        //     match self.window_state.grab_mode {
-        //         CursorGrabMode::None => {
-        //             match window.set_cursor_grab(CursorGrabMode::Locked) {
-        //                 Ok(_) => {}
-        //                 Err(err) => println!("{}", err),
-        //             };
-        //             self.window_state.grab_mode = CursorGrabMode::Locked;
-        //             window.set_cursor_visible(false);
-        //         }
-        //         CursorGrabMode::Confined => {
-        //             println!("Я хз, чё делать.")
-        //         }
-        //         CursorGrabMode::Locked => {
-        //             match window.set_cursor_grab(CursorGrabMode::None) {
-        //                 Ok(_) => {}
-        //                 Err(err) => println!("{}", err),
-        //             };
-        //             self.window_state.grab_mode = CursorGrabMode::None;
-        //             window.set_cursor_visible(true);
-        //         }
-        //     }
-        // }
+        if self.input_state.is_just_pressed(F1) {
+            match self.window_state.grab_mode {
+                CursorGrabMode::None => {
+                    match window.set_cursor_grab(CursorGrabMode::Locked) {
+                        Ok(_) => {}
+                        Err(err) => println!("{}", err),
+                    };
+                    self.window_state.grab_mode = CursorGrabMode::Locked;
+                    window.set_cursor_visible(false);
+                }
+                CursorGrabMode::Confined => {
+                    println!("Я хз, чё делать.")
+                }
+                CursorGrabMode::Locked => {
+                    match window.set_cursor_grab(CursorGrabMode::None) {
+                        Ok(_) => {}
+                        Err(err) => println!("{}", err),
+                    };
+                    self.window_state.grab_mode = CursorGrabMode::None;
+                    window.set_cursor_visible(true);
+                }
+            }
+        }
 
-        // if self.input_state.is_just_pressed(Escape) {
-        //     self.paused = !self.paused;
-        // }
+        if self.input_state.is_just_pressed(Escape) {
+            self.paused = !self.paused;
+        }
 
         self.input_state.update();
 

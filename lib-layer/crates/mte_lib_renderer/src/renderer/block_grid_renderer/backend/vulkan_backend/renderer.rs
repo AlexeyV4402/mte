@@ -82,13 +82,24 @@ impl VkBackend {
 
         let entry = unsafe { Entry::load().unwrap() };
 
-        let (entry, instance) = VkBuilder::create_instance(entry);
+        let display_handle = window.display_handle().unwrap().as_raw();
+
+        // 2. Запрашиваем у ash_window список расширений для ТЕКУЩЕЙ ОС и оконного сервера
+        let raw_extensions = ash_window::enumerate_required_extensions(display_handle).unwrap();
+
+        // 3. Переводим пойнтеры в массив для InstanceCreateInfo
+        let instance_extensions: Vec<*const std::ffi::c_char> = raw_extensions
+            .iter()
+            .map(|&ext| ext)
+            .collect();
+
+        let (entry, instance) = VkBuilder::create_instance(entry, &instance_extensions);
 
         let surface: ash::vk::SurfaceKHR = unsafe {
             ash_window::create_surface(
                 &entry,
                 &instance,
-                window.display_handle().unwrap().into(),
+                display_handle.into(),
                 window.window_handle().unwrap().into(),
                 None, // Аллокатор памяти Vulkan (обычно None)
             )

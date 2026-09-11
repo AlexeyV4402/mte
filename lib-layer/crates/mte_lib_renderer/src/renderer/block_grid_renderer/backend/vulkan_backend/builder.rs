@@ -478,7 +478,7 @@ impl VkBuilder {
         }
     }
 
-    pub fn create_instance(entry: Entry) -> (Entry, ash::Instance) {
+    pub fn create_instance(entry: Entry, instance_required_extensions: &[*const i8]) -> (Entry, ash::Instance) {
         let version = unsafe {
             entry
                 .try_enumerate_instance_version()
@@ -497,15 +497,6 @@ impl VkBuilder {
             .application_version(0)
             .api_version(api_version);
 
-        let instance_required_extensions = [
-            CStr::from_bytes_with_nul(b"VK_KHR_surface\0")
-                .unwrap()
-                .as_ptr(),
-            CStr::from_bytes_with_nul(b"VK_KHR_wayland_surface\0")
-                .unwrap()
-                .as_ptr(),
-        ];
-
         let layer_names = [CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap()];
         let layers_pointers: Vec<*const i8> = layer_names
             .iter()
@@ -513,8 +504,8 @@ impl VkBuilder {
             .collect();
 
         let instance_info = InstanceCreateInfo::default()
-            .enabled_extension_names(&instance_required_extensions)
-            .enabled_layer_names(&layers_pointers)
+            .enabled_extension_names(instance_required_extensions)
+            // .enabled_layer_names(&layers_pointers)
             .application_info(&app_info);
 
         let instance = unsafe {
