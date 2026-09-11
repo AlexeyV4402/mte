@@ -8,17 +8,17 @@ use lib_core::math::vectors::vec3::types::{Vec3f32, Vec3i32};
 use lib_io::user_io::InputState;
 use lib_renderer::context::render_context::RenderContext;
 use lib_renderer::renderer::block_grid_renderer::Renderer;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::camera::RotatableCamera;
 use lib_renderer::renderer::block_grid_renderer::render_objects::outline::OutlineUniform;
 use lib_renderer::renderer::block_grid_renderer::renderer::RendererCreateArgs;
-use lib_renderer::vulkan_backend::VkBackend;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalPosition;
 use winit::event::{DeviceEvent, DeviceId, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode::{Escape, F1, F11};
 use winit::monitor;
-use winit::window::{CursorGrabMode, WindowAttributes};
+use winit::window::{CursorGrabMode, Window, WindowAttributes};
 
 use crate::raycast::raycast;
 use crate::types;
@@ -33,22 +33,26 @@ use crate::world_generator::{SuperSimplexGenerator, WorldGenerator};
 
 pub struct App {
     renderer: Option<Renderer>,
+    vk_backend: Option<VkBackend>,
     input_state: InputState,
     last_time: Instant,
     paused: bool,
     world: World<SuperSimplexGenerator>,
     window_state: WindowState,
+    window: Option<Arc<Window>>,
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
             renderer: None,
+            vk_backend: None,
             input_state: Default::default(),
             last_time: Instant::now(),
             paused: false,
             world: World::new(32),
             window_state: WindowState::default(),
+            window: None,
         }
     }
 }
@@ -58,24 +62,26 @@ impl ApplicationHandler<()> for App {
         // if self.renderer.is_some() {
         //     return;
         // };
-        let mut window_attributes = WindowAttributes::default()
+        let window_attributes = WindowAttributes::default()
             .with_inner_size(winit::dpi::LogicalSize::new(2000.0, 1200.0));
 
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
         // let render_context = pollster::block_on(RenderContext::new(window.clone())).unwrap();
 
-        // let renderer_create_args = RendererCreateArgs {
-        //     block_properties: bytemuck::cast_slice(&BLOCK_PROPERTIES_REGISTRY),
-        //     layer_count: REGISTERED_TEXTURES_COUNT as u32,
-        //     outline_vertices: bytemuck::cast_slice(&CUBE_LINES),
-        // };
+        let renderer_create_args = RendererCreateArgs {
+            block_properties: bytemuck::cast_slice(&BLOCK_PROPERTIES_REGISTRY),
+            layer_count: REGISTERED_TEXTURES_COUNT as u32,
+            outline_vertices: bytemuck::cast_slice(&CUBE_LINES),
+        };
 
         // self.renderer =
         //     Some(pollster::block_on(Renderer::new(render_context, renderer_create_args)).unwrap());
 
-        // self.world.init();
-        let a = VkBackend::new(window.clone());
+        self.world.init();
+        self.vk_backend = Some(VkBackend::new(window.clone(), renderer_create_args));
+
+        self.window = Some(window);
     }
 
     fn device_event(
@@ -101,20 +107,29 @@ impl ApplicationHandler<()> for App {
         //     None => return,
         // };
 
+        let renderer = match &mut self.vk_backend {
+            Some(canvas) => canvas,
+            None => return,
+        };
+
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
-            WindowEvent::Resized(size) => {}
-            // renderer.resize(
+            WindowEvent::Resized(size) => {
+            //     renderer.resize(
             //     size.width,
             //     size.height,
             //     &mut self.world.player_object.camera.lens,
-            // ),
+            // )
+            },
+            
             WindowEvent::RedrawRequested => {
                 if !self.paused {
-                    // renderer.frame(self.world.player_object.get_camera_world_uniform());
-                    // renderer.render().unwrap();
+                    renderer.begin_frame();
+                    self.world.update_meshes(renderer);
+                    renderer.update_camera(self.world.player_object.get_camera_world_uniform());
+                    renderer.end_frame().unwrap();
                 }
             }
             _ => {}
@@ -122,26 +137,34 @@ impl ApplicationHandler<()> for App {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        // let dt = self.last_time.elapsed();
-        // self.last_time = Instant::now();
+        let dt = self.last_time.elapsed();
+        self.last_time = Instant::now();
 
         // let renderer = match &mut self.renderer {
         //     Some(canvas) => canvas,
         //     None => return,
         // };
 
+        let renderer = match &mut self.vk_backend {
+            Some(canvas) => canvas,
+            None => return,
+        };
+
         // let window = &renderer.render_context.window_contexts[0].window.clone();
+        let window = match &self.window {
+            Some(window) => window,
+            None => return,
+        };
 
-        // self.world.update(dt, &self.input_state);
-        // self.world.update_meshes(renderer);
+        self.world.update(dt, &self.input_state);
 
-        // if self.input_state.is_just_pressed(F11) {
-        //     if window.fullscreen().is_none() {
-        //         window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-        //     } else {
-        //         window.set_fullscreen(None);
-        //     }
-        // }
+        if self.input_state.is_just_pressed(F11) {
+            if window.fullscreen().is_none() {
+                window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+            } else {
+                window.set_fullscreen(None);
+            }
+        }
 
         // if self.input_state.is_just_pressed(F1) {
         //     match self.window_state.grab_mode {
@@ -171,9 +194,9 @@ impl ApplicationHandler<()> for App {
         //     self.paused = !self.paused;
         // }
 
-        // self.input_state.update();
+        self.input_state.update();
 
-        // window.request_redraw();
+        window.request_redraw();
     }
 }
 

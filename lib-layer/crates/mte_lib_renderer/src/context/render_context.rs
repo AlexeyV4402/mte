@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use ash::vk::FALSE;
 use winit::window::Window;
 
 use super::gpu_context::GpuContext;
@@ -30,6 +31,7 @@ impl RenderContext {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             })
             .await
             .unwrap();
@@ -71,6 +73,7 @@ impl RenderContext {
             // NEW!
             view_formats: vec![surface_format.add_srgb_suffix()],
             desired_maximum_frame_latency: 2,
+            color_space: todo!(),
         };
 
         Ok(Self {

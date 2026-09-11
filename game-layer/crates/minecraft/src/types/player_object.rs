@@ -62,10 +62,16 @@ impl PlayerObject {
         let move_forward = get_axis(KeyCode::KeyW) - get_axis(KeyCode::KeyS);
         let move_right = get_axis(KeyCode::KeyD) - get_axis(KeyCode::KeyA);
 
+        let move_force = get_axis(KeyCode::ShiftLeft) * MOVE_FORCE + MOVE_FORCE;
+
         let move_up =
             (input_state.is_down(KeyCode::Space) && self.physic_body.on_ground()) as u32 as f32;
-
-        let move_force = get_axis(KeyCode::ShiftLeft) * MOVE_FORCE + MOVE_FORCE;
+        
+        // let move_up = get_axis(KeyCode::Space) - get_axis(KeyCode::ShiftLeft);
+        // let up = Vec3::Y;
+        // let move_force = 0.1;
+        // self.physic_body.position.in_chunk += (move_force * (move_forward * forward + move_right * right + move_up * up)).into();
+        // self.physic_body.position.normalize();
 
         let acceleration = forward.with_y(0.0).normalize_or_zero() * move_forward * move_force
             + right * move_right * move_force
@@ -110,7 +116,7 @@ impl PlayerObject {
             }
         }
 
-        // Теперь двигаем тело и разрешаем коллизии
+        // // Теперь двигаем тело и разрешаем коллизии
         self.physic_body.move_and_resolve(dimension, dt);
     }
 

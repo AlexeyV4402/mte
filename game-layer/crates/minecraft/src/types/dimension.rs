@@ -2,6 +2,7 @@ use std::time::Instant;
 use std::{array, mem};
 
 use lib_renderer::renderer::block_grid_renderer::Renderer;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
@@ -100,8 +101,6 @@ impl Dimension {
             return;
         }
 
-        println!("1");
-
         let queue = mem::take(&mut self.unload_queue);
 
         let chunks: Vec<(ChunkCoords, Chunk)> = queue
@@ -120,12 +119,11 @@ impl Dimension {
             .collect();
 
         if !chunks.is_empty() {
-            println!("2");
             save_manager.save_chunks(chunks);
         }
     }
 
-    pub fn update_chunk_meshes(&mut self, renderer: &mut Renderer) {
+    pub fn update_chunk_meshes(&mut self, renderer: &mut VkBackend) {
         if self.show_queue.len() > 0 {
             // let start = Instant::now();
 
@@ -135,13 +133,12 @@ impl Dimension {
 
                 if let Some(chunk) = self.get_chunk_mut(dirty_chunk_coords) {
                     if let Some(old_id) = chunk.vram_slot_id {
-                        renderer.unload(old_id);
+                        renderer.unload_chunk(old_id);
                     }
 
                     let id = renderer
-                        .load_chunk(chunk_mesh, dirty_chunk_coords.0.to_vec4_left().to_array())
-                        .unwrap();
-                    chunk.vram_slot_id = Some(id);
+                        .load_chunk(chunk_mesh, dirty_chunk_coords.0.to_vec4_left().to_array());
+                    chunk.vram_slot_id = id;
                 }
             });
 
@@ -149,7 +146,7 @@ impl Dimension {
             queue.drain(..).for_each(|dirty_chunk_coords| {
                 if let Some(chunk) = self.get_chunk_mut(dirty_chunk_coords) {
                     if let Some(old_id) = chunk.vram_slot_id {
-                        renderer.unload(old_id);
+                        renderer.unload_chunk(old_id);
                     }
                     chunk.vram_slot_id = None;
                 }

@@ -23,7 +23,7 @@ pub(crate) fn get_rs_files<P: AsRef<Path>>(root: P) -> impl Iterator<Item = Path
 }
 
 #[inline]
-pub(crate) fn detect_file_format(bytes: &[u8]) -> Option<infer::Type> {
+pub(crate) fn detect_file_format_by_signature(bytes: &[u8]) -> Option<infer::Type> {
     let mut info = Infer::new();
 
     info.add("model/gltf-binary", "glb", |buf| {

@@ -1,6 +1,7 @@
 [path]
 content = {path = "crate://content/", path_type = "vpath"}
 data = {path = "crate://data/", path_type = "vpath"}
+assets = {path = "workspace://game-layer/assets/minecraft/", path_type = "vpath"}
 
 
 [[packs]]

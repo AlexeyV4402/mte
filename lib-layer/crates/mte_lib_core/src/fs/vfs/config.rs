@@ -82,7 +82,7 @@ pub struct VfsPack {
     pub dirs: Vec<InPackDir>,
 }
 
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Deserialize, Clone, Default, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum CompressionType {
     Unpack,

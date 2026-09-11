@@ -1,128 +1,49 @@
 // #![feature(proc_macro_span_file)]
-use std::env;
-
-use lib_core::fs::os::get_workspace_dir_from;
-use lib_core::fs::vfs::builder::init_builder_state;
 use proc_macro::TokenStream;
-use syn::parse::{Parse, ParseStream, Parser};
-use syn::{Error, Expr, Fields, Ident, ItemEnum, Lit, LitBool, LitStr, Token, parse_macro_input};
+use syn::{LitStr, parse_macro_input};
 
 use crate::find_entry::find_vfs_entry;
 
+mod custom;
 mod find_entry;
+mod macro_core;
+mod macro_include_std;
+mod macro_preprocess;
+mod macro_vpath;
 
 #[proc_macro]
 pub fn vpath(input: TokenStream) -> TokenStream {
-    let input_lit = parse_macro_input!(input as LitStr);
-
-    let span = proc_macro::Span::call_site();
-
-    let resolve_path = || {
-        let workspace_root =
-            get_workspace_dir_from(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
-                .map_err(|err| syn::Error::new(input_lit.span(), format!("{}", err)))?;
-
-        init_builder_state(&workspace_root)
-            .map_err(|err| syn::Error::new(input_lit.span(), format!("{}", err)))?;
-
-        lib_core::fs::vfs::resolve::resolve_path_checked(
-            &input_lit.value(),
-            &workspace_root,
-            span.local_file(),
-        )
-        .map_err(|err| syn::Error::new(input_lit.span(), format!("{}", err)))
-    };
-
-    match resolve_path() {
-        Ok(path) => {
-            let components: Vec<&str> = path
-                .components()
-                .map(|c| c.as_os_str().to_str().unwrap())
-                .collect();
-            let expanded = quote::quote! {
-                {
-                    [#(#components),*].iter().collect::<std::path::PathBuf>()
-                }
-            };
-            proc_macro::TokenStream::from(expanded)
-        }
-        Err(compile_error) => proc_macro::TokenStream::from(compile_error.to_compile_error()),
-    }
+    macro_vpath::vpath_impl(input, lib_core::fs::vfs::resolve::resolve_path_checked)
 }
 
 #[proc_macro]
 pub fn vpath_unchecked(input: TokenStream) -> TokenStream {
-    let input_lit = parse_macro_input!(input as LitStr);
+    macro_vpath::vpath_impl(input, lib_core::fs::vfs::resolve::resolve_path_unchecked)
+}
 
-    let span = proc_macro::Span::call_site();
+#[proc_macro]
+pub fn vfs_include_str(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    macro_include_std::vfs_include_str_impl(input)
+}
 
-    let resolve_path = || {
-        let workspace_root =
-            get_workspace_dir_from(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
-                .map_err(|err| syn::Error::new(input_lit.span(), format!("{}", err)))?;
+#[proc_macro]
+pub fn vfs_include_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    macro_include_std::vfs_include_bytes_impl(input)
+}
 
-        init_builder_state(&workspace_root)
-            .map_err(|err| syn::Error::new(input_lit.span(), format!("{}", err)))?;
+#[proc_macro]
+pub fn vfs_include_vk_shader(input: TokenStream) -> TokenStream {
+    macro_preprocess::vfs_include_vk_shader_impl(input)
+}
 
-        lib_core::fs::vfs::resolve::resolve_path_unchecked(
-            &input_lit.value(),
-            &workspace_root,
-            span.local_file(),
-        )
-        .map_err(|err| syn::Error::new(input_lit.span(), format!("{}", err)))
-    };
-
-    match resolve_path() {
-        Ok(path) => {
-            let components: Vec<&str> = path
-                .components()
-                .map(|c| c.as_os_str().to_str().unwrap())
-                .collect();
-            let expanded = quote::quote! {
-                {
-                    [#(#components),*].iter().collect::<std::path::PathBuf>()
-                }
-            };
-            proc_macro::TokenStream::from(expanded)
-        }
-        Err(compile_error) => proc_macro::TokenStream::from(compile_error.to_compile_error()),
-    }
+#[proc_macro]
+pub fn define_blocks(input: TokenStream) -> TokenStream {
+    custom::macro_define_blocks::define_blocks_impl(input)
 }
 
 #[proc_macro]
 pub fn vfs_read(input: TokenStream) -> TokenStream {
-    let input_lit = parse_macro_input!(input as LitStr);
-
-    let span = proc_macro::Span::call_site();
-
-    let resolve_path = || {
-        let workspace_root =
-            get_workspace_dir_from(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
-                .map_err(|err| syn::Error::new(input_lit.span(), format!("{}", err)))?;
-
-        lib_core::fs::vfs::resolve::resolve_path_unchecked(
-            &input_lit.value(),
-            &workspace_root,
-            span.local_file(),
-        )
-        .map_err(|err| syn::Error::new(input_lit.span(), format!("{}", err)))
-    };
-
-    match resolve_path() {
-        Ok(path) => {
-            let components: Vec<&str> = path
-                .components()
-                .map(|c| c.as_os_str().to_str().unwrap())
-                .collect();
-            let expanded = quote::quote! {
-                {
-                    [#(#components),*].iter().collect::<PathBuf>()
-                }
-            };
-            proc_macro::TokenStream::from(expanded)
-        }
-        Err(compile_error) => proc_macro::TokenStream::from(compile_error.to_compile_error()),
-    }
+    macro_vpath::vpath_impl(input, lib_core::fs::vfs::resolve::resolve_path_unchecked)
 }
 
 #[proc_macro]
@@ -153,195 +74,6 @@ pub fn vfs_read_all(input: TokenStream) -> TokenStream {
         }
         Err(compile_error) => proc_macro::TokenStream::from(compile_error.to_compile_error()),
     }
-}
-
-struct BlockDefinition {
-    name: Ident,
-    solid: LitBool,
-    shape: Expr,
-    profile: Ident,
-    textures: Vec<LitStr>,
-}
-
-// Реализуем трейт Parse, чтобы syn знал, как читать наш синтаксис:
-// Air => { solid: false, shape: Shape::None, profile: AllSides, textures: [...] }
-impl Parse for BlockDefinition {
-    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
-        let name: Ident = input.parse()?;
-        input.parse::<Token![=>]>()?;
-
-        let content;
-        syn::braced!(content in input);
-
-        // Читаем solid
-        content.parse::<Ident>()?; // пропускаем "solid"
-        content.parse::<Token![:]>()?;
-        let solid: LitBool = content.parse()?;
-        content.parse::<Token![,]>()?;
-
-        // Читаем shape
-        content.parse::<Ident>()?; // пропускаем "shape"
-        content.parse::<Token![:]>()?;
-        let shape: Expr = content.parse()?;
-        content.parse::<Token![,]>()?;
-
-        // Читаем profile
-        content.parse::<Ident>()?; // пропускаем "profile"
-        content.parse::<Token![:]>()?;
-        let profile: Ident = content.parse()?;
-        content.parse::<Token![,]>()?;
-
-        // Читаем textures
-        content.parse::<Ident>()?; // пропускаем "textures"
-        content.parse::<Token![:]>()?;
-
-        let tex_array;
-        syn::bracketed!(tex_array in content);
-        let mut textures = Vec::new();
-        while !tex_array.is_empty() {
-            let tex: LitStr = tex_array.parse()?;
-            textures.push(tex);
-            if tex_array.is_empty() {
-                break;
-            }
-            tex_array.parse::<Token![,]>()?;
-        }
-
-        // Разрешаем опциональную запятую в конце структуры блока
-        if content.peek(Token![,]) {
-            content.parse::<Token![,]>()?;
-        }
-
-        Ok(BlockDefinition {
-            name,
-            solid,
-            shape,
-            profile,
-            textures,
-        })
-    }
-}
-
-// Контейнер для ВСЕХ блоков, разделенных запятыми
-struct BlocksList {
-    blocks: Vec<BlockDefinition>,
-}
-
-impl Parse for BlocksList {
-    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
-        let mut blocks = Vec::new();
-        while !input.is_empty() {
-            blocks.push(input.parse()?);
-            if input.is_empty() {
-                break;
-            }
-            input.parse::<Token![,]>()?;
-        }
-        Ok(BlocksList { blocks })
-    }
-}
-
-#[proc_macro]
-pub fn define_blocks(input: TokenStream) -> TokenStream {
-    // 1. Распаковываем дерево токенов в наш BlocksList
-    let input_list = parse_macro_input!(input as BlocksList);
-
-    let mut enum_variants = Vec::new();
-    let mut match_solid = Vec::new();
-    let mut match_shape = Vec::new();
-    let mut match_profile = Vec::new();
-    let mut property_initializers = Vec::new();
-    let mut all_textures = Vec::new();
-
-    let mut current_block_id = 0;
-    let mut current_texture_index = 0u32;
-
-    for block in input_list.blocks {
-        let name = &block.name;
-        let solid = &block.solid;
-        let shape = &block.shape;
-        let profile = &block.profile;
-
-        // Собираем пути для твоего внешнего упаковщика паков
-        for tex in &block.textures {
-            all_textures.push(tex.value());
-        }
-
-        enum_variants.push(quote::quote! { #name });
-        match_solid.push(quote::quote! { BlockType::#name => #solid });
-        match_shape.push(quote::quote! { BlockType::#name => #shape });
-        match_profile.push(quote::quote! { BlockType::#name => TextureMappingProfile::#profile });
-
-        // ВАЖНО: Мы вычисляем значения прямо ТУТ, на CPU во время компиляции
-        property_initializers.push(quote::quote! {
-            BlockProperty { base_id: #current_texture_index, profile_id: TextureMappingProfile::#profile as u32 }
-        });
-
-        current_texture_index += block.textures.len() as u32;
-        current_block_id += 1;
-    }
-
-    // Добиваем остаток массива до 4096 дефолтными пустыми свойствами
-    let padding_count = 4096 - current_block_id;
-    let padding =
-        vec![quote::quote! { BlockProperty { base_id: 0, profile_id: 0 } }; padding_count];
-
-    // println!(
-    //     "ASSET_COMPILER: Total textures to pack: {}",
-    //     current_texture_index
-    // );
-    // for path in &all_textures {
-    //     println!("ASSET_COMPILER_PATH: {}", path);
-    // }
-
-    // 2. Генерируем финальный чистый код Rust с помощью макроса quote!
-    let expanded = quote::quote! {
-        pub const REGISTERED_BLOCKS_COUNT: usize = #current_block_id;
-        pub const REGISTERED_TEXTURES_COUNT: u32 = #current_texture_index;
-
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        #[repr(u16)]
-        pub enum BlockType {
-            #( #enum_variants ),*
-        }
-
-        impl BlockType {
-            #[inline(always)]
-            pub fn is_solid(self) -> bool {
-                match self {
-                    #( #match_solid ),*
-                }
-            }
-
-            #[inline(always)]
-            pub fn is_transparent(self) -> bool {
-                !self.is_solid()
-            }
-
-            #[inline(always)]
-            pub fn get_shape(self) -> Shape {
-                match self {
-                    #( #match_shape ),*
-                }
-            }
-
-            #[inline(always)]
-            pub fn get_texture_mapping_profile(self) -> TextureMappingProfile {
-                match self {
-                    #( #match_profile ),*
-                }
-            }
-        }
-
-        // Идеальный массив для GPU: никаких изменяемых переменных и циклов,
-        // чистый, запеченный массив констант. Компилятор сожрет его мгновенно.
-        pub const BLOCK_PROPERTIES_REGISTRY: [BlockProperty; 4096] = [
-            #( #property_initializers, )*
-            #( #padding ),*
-        ];
-    };
-
-    TokenStream::from(expanded)
 }
 
 // #[proc_macro]
@@ -571,90 +303,6 @@ pub fn define_blocks(input: TokenStream) -> TokenStream {
 //         Err(compile_error) => TokenStream::from(compile_error.to_compile_error()),
 //     }
 // }
-
-#[proc_macro]
-pub fn vfs_include_str(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input_lit = parse_macro_input!(input as LitStr);
-
-    let resolve_path = || {
-        let workspace_root = get_workspace_dir_from(std::path::Path::new(env!(
-            "CARGO_MANIFEST_DIR"
-        )))
-        .map_err(|err| syn::Error::new(input_lit.span(), format!("Workspace error: {}", err)))?;
-
-        init_builder_state(&workspace_root).map_err(|err| {
-            syn::Error::new(input_lit.span(), format!("Builder init error: {}", err))
-        })?;
-
-        let span = proc_macro::Span::call_site();
-
-        lib_core::fs::vfs::resolve::resolve_path_checked(
-            &input_lit.value(),
-            &workspace_root,
-            span.local_file(),
-        )
-        .map_err(|err| syn::Error::new(input_lit.span(), format!("Resolve error: {}", err)))
-    };
-
-    match resolve_path() {
-        Ok(path) => match path.to_str() {
-            Some(path_str) => {
-                let expanded = quote::quote! {
-                    include_str!(#path_str)
-                };
-                proc_macro::TokenStream::from(expanded)
-            }
-            None => {
-                let err =
-                    syn::Error::new(input_lit.span(), "Path contains invalid UTF-8 characters");
-                proc_macro::TokenStream::from(err.to_compile_error())
-            }
-        },
-        Err(compile_error) => proc_macro::TokenStream::from(compile_error.to_compile_error()),
-    }
-}
-
-#[proc_macro]
-pub fn vfs_include_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input_lit = parse_macro_input!(input as LitStr);
-
-    let resolve_path = || {
-        let workspace_root = get_workspace_dir_from(std::path::Path::new(env!(
-            "CARGO_MANIFEST_DIR"
-        )))
-        .map_err(|err| syn::Error::new(input_lit.span(), format!("Workspace error: {}", err)))?;
-
-        init_builder_state(&workspace_root).map_err(|err| {
-            syn::Error::new(input_lit.span(), format!("Builder init error: {}", err))
-        })?;
-
-        let span = proc_macro::Span::call_site();
-
-        lib_core::fs::vfs::resolve::resolve_path_checked(
-            &input_lit.value(),
-            &workspace_root,
-            span.local_file(),
-        )
-        .map_err(|err| syn::Error::new(input_lit.span(), format!("Resolve error: {}", err)))
-    };
-
-    match resolve_path() {
-        Ok(path) => match path.to_str() {
-            Some(path_str) => {
-                let expanded = quote::quote! {
-                    include_bytes!(#path_str)
-                };
-                proc_macro::TokenStream::from(expanded)
-            }
-            None => {
-                let err =
-                    syn::Error::new(input_lit.span(), "Path contains invalid UTF-8 characters");
-                proc_macro::TokenStream::from(err.to_compile_error())
-            }
-        },
-        Err(compile_error) => proc_macro::TokenStream::from(compile_error.to_compile_error()),
-    }
-}
 
 // #[proc_macro]
 // pub fn include_config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

@@ -11,14 +11,12 @@ game_lib = {path = "game-layer/crates/game_lib"}
 
 mte_macros = {path = "engine-layer/crates/mte_macros"}
 
-winit = "0.30.13"
-wgpu = "29.0.1"
-tokio = { version = "1.50.0", features = ["full"] }
+
+tokio = { version = "1.50.0", features = ["full"] } # Для сервера
 anyhow = "1.0.102"
 env_logger = "0.11.10"
 pollster = "0.4.0"
-glam = "0.32.1"
-bytemuck = { version = "1.24", features = [ "derive" ] }
+glam = "0.33.6"
 image = {version = '0.25.10', features = ["png", "jpeg"]}
 tobj = "4.0.3"
 chrono = "0.4.44"
@@ -29,7 +27,6 @@ bitcode = {version = "0.6.9", features = ["glam"]}
 bincode = "1.3.3"
 serde = { version = "1.0", features = ["derive"] }
 serde-big-array = "0.5"
-rayon = "1.12.0"
 toml = "1.1.2+spec-1.1.0"
 x25519-dalek = { version = "2.0", features = ["static_secrets"] }
 chacha20poly1305 = "0.10.1"
@@ -49,16 +46,27 @@ memmap2 = "0.9.10"
 regex = "1.10"
 walkdir = "2.5"
 meshopt = "0.6.2"
-lz4_flex = "0.13.1"
-zstd = "0.13.3"
-basis-universal = "0.3.1"
-infer = "0.19.0"
+infer = "0.22.0"
+mime_guess = "2.0.5"
 metastrip = "0.1"
 ctt = "0.4.0"
 serde_json = "1.0.150"
 rustc-hash = "2.1.3"
 noise = "0.9"
-ash = "0.38.0+1.3.281"
+
+# 3/5
+wgpu = "30.0.1"
+
+# 5/5
+ash = "0.38.0+1.3.281" # Графика
+ash-window = "0.13.0" # Графика <=> Окно
+winit = "0.30.13" # Окно
+rayon = "1.12.0" # Многопоток
+bytemuck = { version = "1.24", features = [ "derive" ] } # Конвертация в &[u8]
+lz4_flex = "0.13.1" # Сжатие
+zstd = "0.13.3" # Сжатие
+basis-universal = "0.3.1" # Сжатие/подготовка ассетов
+naga = { version = "30.0.1", default-features = false, features = ["glsl-in", "spv-out"] }
 
 [workspace]
 members = [
@@ -71,7 +79,6 @@ members = [
     "game-layer/crates/init",
 
     # --- ENGINE LAYER (Мета-функционал) ---
-    # "engine-layer/crates/mte_core",
     "engine-layer/crates/mte_macros",
     "engine-layer/crates/mte_tool",
 

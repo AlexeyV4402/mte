@@ -1,3 +1,4 @@
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::ChunkGpuHandle;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use lib_renderer::renderer::block_grid_renderer::types::BlockVertex;
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,7 @@ const _: () = assert!(CHUNK_SIZE == 32, "Код рассчитан на разм
 
 pub struct Chunk {
     pub data: [Block; CHUNK_ARRAY_LEN],
-    pub vram_slot_id: Option<usize>,
+    pub vram_slot_id: Option<ChunkGpuHandle>,
     pub is_changed: bool,
 }
 

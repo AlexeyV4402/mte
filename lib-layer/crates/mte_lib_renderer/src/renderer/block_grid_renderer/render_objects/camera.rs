@@ -39,7 +39,7 @@ impl RotatableLens {
     }
 
     pub fn get_proj_mat(&self) -> Mat4 {
-        Mat4::perspective_lh(self.fovy_rad, self.aspect, self.znear, self.zfar)
+        glam::camera::lh::proj::vulkan::perspective(self.fovy_rad, self.aspect, self.znear, self.zfar)
     }
 
     pub fn get_view_rotation_mat(&self) -> Mat4 {
@@ -121,18 +121,3 @@ pub struct WorldCameraUniform {
     pub camera_chunk: [i32; 4],
     pub camera_in_chunk_position: [f32; 4],
 }
-// #[repr(C)]
-// #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-// pub struct CameraUniform {
-//     pub view_proj: [[f32; 4]; 4],
-//     //     pub proj_matrix: [[f32; 4]; 4],
-//     // pub view_rotation: [[f32; 4]; 4],
-//     // pub camera_chunk: [i32; 4],
-//     // pub camera_in_chunk_position: [f32; 4],
-// }
-
-// impl CameraUniform {
-//     pub const IDENT: Self = Self {
-//         view_proj: Mat4::IDENTITY.to_cols_array_2d(),
-//     };
-// }

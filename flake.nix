@@ -24,31 +24,56 @@
         "rustfmt"        # Форматтер
       ];
     };
+
+    runtimeLibs = with pkgs; [
+          vulkan-loader
+          vulkan-validation-layers
+          renderdoc
+          libGL
+          xorg.libX11
+          xorg.libXcursor
+          xorg.libXrandr
+          xorg.libXi
+          wayland
+          libxkbcommon
+        ];
   in
   {
     devShells.${system}.default = pkgs.mkShell {
       buildInputs = with pkgs; [
-        # Вместо кучи отдельных пакетов используем наш комплексный тулчейн
+        renderdoc
+
+        vulkan-loader
+        vulkan-validation-layers
+        vulkan-tools
+
         rustToolchain 
         
-        # Системные зависимости для сборки большинства крейтов
         pkg-config
         openssl
 
         wayland
         libxkbcommon
-        # Если в будущем wgpu потребует Vulkan/X11 драйверы:
-        vulkan-loader
+
         xorg.libX11
         xorg.libXcursor
         xorg.libXrandr
         xorg.libXi
       ];
+
+      shellHook = ''
+        #export VK_LAYER_PATH="${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d"
+        export VK_INSTANCE_LAYERS="VK_LAYER_KHRONOS_validation"
+
+        export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
+
+        export VK_LAYER_PATH="${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d:${pkgs.renderdoc}/share/vulkan/explicit_layer.d:$VK_LAYER_PATH"
+            
+        export XDG_DATA_DIRS="${pkgs.renderdoc}/share:$XDG_DATA_DIRS"
+      '';
       
-      # 3. Переменная для rust-analyzer теперь берется прямо из нашего nightly-тулчейна
       env.RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
       
-      # Пробрасываем пути к динамическим библиотекам C (исправляет большинство os error 2 при сборке)
       LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs; [
         stdenv.cc.cc.lib
         openssl

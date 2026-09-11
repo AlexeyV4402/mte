@@ -30,3 +30,6 @@ zstd = {workspace = true}
 gltf = {workspace = true}
 basis-universal = {workspace = true}
 image = {workspace = true}
+naga = {workspace = true}
+bytemuck = {workspace = true}
+mime_guess = {workspace = true}

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use crate::fs::os::{find_cargo, get_crate_dir_from, get_files_recursively};
+use crate::fs::os::{find_cargo, get_crate_dir_from, get_files_recursively, get_workspace_dir};
 use crate::fs::vfs::config::{
     CompressionType, PathType, VfsPack, read_vfs_packs_toml, read_vfs_path_toml
 };
@@ -144,12 +144,12 @@ fn resolve_path_internal(
     }
 }
 
-pub fn primary_in_pack_resolve<'a>(
-    vpath: &'a str,
+pub fn primary_in_pack_resolve(
+    vpath: &str,
     manifest_dir: &Path,
     packs: &Vec<VfsPack>,
     from_file_abs: &Path,
-) -> Result<(PathBuf, &'a str, CompressionType), VfsResolverError> {
+) -> Result<(PathBuf, String, CompressionType), VfsResolverError> {
     // Разбили входной vpath на префикс, название пака и хвост пути к файлу
     let Some((scheme, pack_name, tail)) = vpath.split_once("://").and_then(|(s_scheme, s_body)| {
         s_body
@@ -197,7 +197,7 @@ pub fn primary_in_pack_resolve<'a>(
                         )?
                     }
                 };
-                return Ok((path, pack_name, f.compression.clone()));
+                return Ok((path, pack.output_name.clone(), f.compression.clone()));
             }
 
             // 2. Стратегия Б: Ищем внутри зарегистрированных директорий пака
@@ -249,7 +249,7 @@ pub fn primary_in_pack_resolve<'a>(
                         .cloned()
                         .unwrap_or(CompressionType::default());
 
-                    return Ok((p, pack_name, compression_type));
+                    return Ok((p, pack.output_name.clone(), compression_type));
                 }
             }
 
@@ -259,11 +259,11 @@ pub fn primary_in_pack_resolve<'a>(
     }
 }
 
-pub fn primary_pack_resolve<'a>(
-    vpaths: &'a Vec<String>,
+pub fn primary_pack_resolve(
+    vpaths: &Vec<String>,
     workspace_root: &Path,
     from_file: Option<PathBuf>,
-) -> Result<Vec<Result<(PathBuf, &'a str, CompressionType), VfsResolverError>>, VfsResolverError> {
+) -> Result<Vec<Result<(PathBuf, String, CompressionType), VfsResolverError>>, VfsResolverError> {
     let file_rel = from_file.ok_or(VfsResolverError::CallerFileNotFound)?;
     let from_file_abs = workspace_root.join(file_rel);
 
@@ -275,5 +275,12 @@ pub fn primary_pack_resolve<'a>(
     Ok(vpaths
         .iter()
         .map(|vpath| primary_in_pack_resolve(vpath, workspace_root, &packs, &from_file_abs))
-        .collect::<Vec<Result<(PathBuf, &'a str, CompressionType), VfsResolverError>>>())
+        .collect::<Vec<Result<(PathBuf, String, CompressionType), VfsResolverError>>>())
+}
+
+pub fn get_cache_path(src: &Path) -> Result<PathBuf, String> {
+    let cache_name = src.to_string_lossy().replace("/", "|");
+    Ok(get_workspace_dir()?
+        .join(".mte/assets_cache")
+        .join(cache_name))
 }

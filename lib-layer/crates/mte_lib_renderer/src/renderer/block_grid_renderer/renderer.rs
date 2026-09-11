@@ -203,7 +203,7 @@ impl Renderer {
             "Layer 0 Render Pipeline",
             &render_pipeline_layout,
             &opaque_shader,
-            &[BlockVertex::desc()],
+            &[Some(BlockVertex::desc())],
             window_context.config.format,
         );
         let hand_render_pipeline = Self::create_standart_render_pipeline(
@@ -211,7 +211,7 @@ impl Renderer {
             "Hand Render Pipeline",
             &render_pipeline_layout,
             &hand_shader,
-            &[BlockVertex::desc()],
+            &[Some(BlockVertex::desc())],
             window_context.config.format,
         );
 
@@ -378,7 +378,7 @@ impl Renderer {
             }
 
             gpu_context.queue.submit(iter::once(encoder.finish()));
-            output.present();
+            // output.present();
         }
 
         // if window_context.is_suboptimal {
@@ -431,7 +431,7 @@ impl Renderer {
         label: &'static str,
         layout: &PipelineLayout,
         shader: &ShaderModule,
-        buffers: &[VertexBufferLayout],
+        buffers: &[Option<VertexBufferLayout>],
         format: TextureFormat,
     ) -> RenderPipeline {
         gpu_context
@@ -488,7 +488,7 @@ impl Renderer {
         label: &'static str,
         layout: &PipelineLayout,
         shader: &ShaderModule,
-        buffers: &[VertexBufferLayout],
+        buffers: &[Option<VertexBufferLayout>],
         format: TextureFormat,
     ) -> RenderPipeline {
         gpu_context
@@ -617,7 +617,7 @@ impl BlockStaticRenderData {
 
         let texture_view = TextureArray2D::init(
             &gpu_context,
-            vfs_include_bytes!("workspace://game-layer/crates/minecraft/content/pack0"),
+            vfs_include_bytes!("workspace://game-layer/crates/minecraft/content/000001"),
             16,
             args.layer_count,
         );

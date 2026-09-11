@@ -137,33 +137,6 @@ impl IndirectBufferManager {
         Ok(free)
     }
 
-    // pub fn load_hand(
-    //     &mut self,
-    //     primitive: BlockIndexedPrimitive,
-    //     matrix: [[f32; 4]; 4],
-    // ) -> anyhow::Result<usize> {
-    //     if primitive.vertices.len() > GLOBAL_BUFFER_VERTEX_PER_SECTION as usize
-    //         || primitive.indices.len() > GLOBAL_BUFFER_INDEX_PER_SECTION as usize
-    //     {
-    //         return Err(anyhow::anyhow!(
-    //             "{} вершин дано;\n{} вершин допустимо;\n{} индексов дано;\n{} индексов допустимо;",
-    //             primitive.vertices.len(),
-    //             GLOBAL_BUFFER_VERTEX_PER_SECTION,
-    //             primitive.indices.len(),
-    //             GLOBAL_BUFFER_INDEX_PER_SECTION
-    //         ));
-    //     }
-
-    //     let free = self
-    //         .global_buffer_free_slots
-    //         .pop()
-    //         .ok_or(anyhow::anyhow!("Нет свободных слотов в VRAM"))?;
-
-    //     self.write_with_matrix(free, &primitive, &matrix);
-
-    //     Ok(free)
-    // }
-
     pub fn unload(&mut self, slot_id: usize) {
         self.global_buffer_free_slots.push(slot_id);
 
