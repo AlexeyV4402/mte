@@ -25,6 +25,14 @@ impl<T> Vector3<T> {
     }
 
     #[inline(always)]
+    pub const fn from_num(a: T) -> Self
+    where
+        T: Copy,
+    {
+        Self { x: a, y: a, z: a }
+    }
+
+    #[inline(always)]
     pub fn euclidian_len_sq(self) -> T
     where
         T: Mul<Output = T> + Add<Output = T> + Copy,

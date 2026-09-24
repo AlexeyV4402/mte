@@ -96,11 +96,9 @@ impl ApplicationHandler<()> for App {
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => {
-                self.world.player_object.camera.lens = RotatableLens::new(size.width as f32, size.height as f32);
-                    renderer.resize(
-                    size.width,
-                    size.height,
-                )
+                self.world.player_object.camera.lens =
+                    RotatableLens::new(size.width as f32, size.height as f32);
+                renderer.resize(size.width, size.height)
             }
 
             WindowEvent::RedrawRequested => {
@@ -108,7 +106,7 @@ impl ApplicationHandler<()> for App {
                     renderer.begin_frame();
                     self.world.update_meshes(renderer);
                     renderer.update_camera(self.world.player_object.get_camera_world_uniform());
-                    renderer.end_frame(self.world.player_object.get_camera_hand_uniform()).unwrap();
+                    renderer.end_frame().unwrap();
                 }
             }
             _ => {}

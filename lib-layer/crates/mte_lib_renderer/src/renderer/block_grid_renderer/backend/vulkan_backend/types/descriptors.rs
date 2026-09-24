@@ -11,7 +11,6 @@ pub struct Descriptors {
     pub set2_layout: vk::DescriptorSetLayout,
     pub set3_layout: vk::DescriptorSetLayout,
 
-
     pub set0_blocks: vk::DescriptorSet,
     pub set1_camera: vk::DescriptorSet,
     pub set2_vectors: vk::DescriptorSet,
@@ -24,7 +23,7 @@ impl Descriptors {
         resources: &StaticData,
         camera_buffer: vk::Buffer,
         vectors_buffer: vk::Buffer,
-        matrices_buffer: vk::Buffer
+        matrices_buffer: vk::Buffer,
     ) -> Self {
         // --- LAYOUT SET 0: StaticData ---
         let layout_set0 = StaticData::get_set_layout(&device);
@@ -89,7 +88,7 @@ impl Descriptors {
                 .descriptor_count(1), // Sampler
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::STORAGE_BUFFER)
-                .descriptor_count(1), // Block Properties / 
+                .descriptor_count(1), // Block Properties /
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::UNIFORM_BUFFER)
                 .descriptor_count(3), // WorldCameraUniform / Vectors / Matrices
@@ -206,12 +205,30 @@ impl Descriptors {
         [self.set0_layout, self.set1_layout, self.set2_layout]
     }
 
-    pub fn hand_sets(&self) -> [DescriptorSet; 2] {
-        [self.set0_blocks, self.set3_matrices]
+    pub fn phys_objects_sets(&self) -> [DescriptorSet; 4] {
+        [
+            self.set0_blocks,
+            self.set1_camera,
+            self.set2_vectors,
+            self.set3_matrices,
+        ]
     }
 
-    pub fn hand_layouts(&self) -> [DescriptorSetLayout; 2] {
-        [self.set0_layout, self.set3_layout]
+    pub fn phys_objects_layouts(&self) -> [DescriptorSetLayout; 4] {
+        [
+            self.set0_layout,
+            self.set1_layout,
+            self.set2_layout,
+            self.set3_layout,
+        ]
+    }
+
+    pub fn hand_sets(&self) -> [DescriptorSet; 1] {
+        [self.set0_blocks]
+    }
+
+    pub fn hand_layouts(&self) -> [DescriptorSetLayout; 1] {
+        [self.set0_layout]
     }
 
     pub unsafe fn destroy(&mut self, device: &ash::Device) {

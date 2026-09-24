@@ -124,8 +124,6 @@ impl Dimension {
 
     pub fn update_chunk_meshes(&mut self, renderer: &mut VkBackend) {
         if self.show_queue.len() > 0 {
-            // let start = Instant::now();
-
             let mut queue = mem::replace(&mut self.show_queue, Vec::with_capacity(32));
             queue.drain(..).for_each(|dirty_chunk_coords| {
                 let chunk_mesh = self.get_chunk_mesh(dirty_chunk_coords.clone());
@@ -140,19 +138,16 @@ impl Dimension {
                     chunk.vram_slot_id = id;
                 }
             });
-
-            let mut queue = mem::replace(&mut self.hide_queue, Vec::with_capacity(32));
-            queue.drain(..).for_each(|dirty_chunk_coords| {
-                if let Some(chunk) = self.get_chunk_mut(dirty_chunk_coords) {
-                    if let Some(old_id) = chunk.vram_slot_id {
-                        renderer.unload_chunk(old_id);
-                    }
-                    chunk.vram_slot_id = None;
-                }
-            });
-
-            // println!("Обновление чанков: {} ms", start.elapsed().as_millis());
         };
+        let mut queue = mem::replace(&mut self.hide_queue, Vec::with_capacity(32));
+        queue.drain(..).for_each(|dirty_chunk_coords| {
+            if let Some(chunk) = self.get_chunk_mut(dirty_chunk_coords) {
+                if let Some(old_id) = chunk.vram_slot_id {
+                    renderer.unload_chunk(old_id);
+                }
+                chunk.vram_slot_id = None;
+            }
+        });
     }
 
     pub fn get_chunk_mesh(&self, chunk_coordinates: ChunkCoords) -> BlockIndexedPrimitive {

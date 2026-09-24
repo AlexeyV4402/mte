@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::blocks::block::{Block, BlockType};
 use crate::types::coordinates::core::{InternalCoords, LocalCoords};
-use crate::utils::mesher::{generate_mesh, into_prerender_array};
+use crate::utils::mesher::{
+    WorldChunk32, generate_mesh_34, generate_mesh_generic, into_prerender_array
+};
 
 pub type ChunkAssociatedType = u32;
 pub const CHUNK_SIZE: u32 = 32;
@@ -84,7 +86,8 @@ impl Chunk {
 
     pub fn get_mesh(&self) -> BlockIndexedPrimitive {
         let prerender_arr = into_prerender_array(&self.data);
-        generate_mesh(&prerender_arr)
+        // generate_mesh_34(&prerender_arr)
+        generate_mesh_generic::<WorldChunk32, u64>(&prerender_arr, 0x1_FFFF_FFFE)
     }
 }
 

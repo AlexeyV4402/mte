@@ -155,6 +155,7 @@ impl SlotBuffer {
         total_size: vk::DeviceSize,
         usage: vk::BufferUsageFlags,
         properties: vk::MemoryPropertyFlags,
+        slot_size: u64,
     ) -> Self {
         Self {
             gpu_buffers: vec![VkBufferDataDL::new(
@@ -165,7 +166,7 @@ impl SlotBuffer {
                 properties,
             )],
             free_slots: (0..256).collect(),
-            slot_size: 16,
+            slot_size,
             usage,
             properties,
         }

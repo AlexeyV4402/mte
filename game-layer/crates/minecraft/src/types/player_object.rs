@@ -16,12 +16,14 @@ use winit::keyboard::KeyCode;
 use crate::raycast::raycast;
 use crate::types;
 use crate::types::blocks::block::{Block, BlockType, REGISTERED_BLOCKS_COUNT};
+use crate::types::coordinates::core::GlobalCoords;
 use crate::types::dimension::Dimension;
 use crate::types::item::{Item, ItemType};
 use crate::types::physics_body::PhysicsBody;
+use crate::types::world::PhysicsEvent;
 
 pub struct PlayerObject {
-    physic_body: PhysicsBody,
+    pub physic_body: PhysicsBody,
     hand_item: Item,
     pub camera: RotatableCamera,
     hand_dirty: bool,
@@ -33,7 +35,7 @@ const GRAVITY_FORCE: Vec3 = Vec3::new(0.0, -35.0, 0.0);
 const JUMP_SPEED: f32 = 12.0;
 
 impl PlayerObject {
-    const CAMERA_OFFSET: PrecisePositionC32 = PrecisePositionC32 {
+    pub const CAMERA_OFFSET: PrecisePositionC32 = PrecisePositionC32 {
         chunk: Vector3::<i32>::new(0, 0, 0),
         in_chunk: Vector3::<f32>::new(0.0, 0.7, 0.0),
     };
@@ -48,11 +50,16 @@ impl PlayerObject {
             camera,
             hand_dirty: true,
             hand_gpu_handle: None,
-            
         }
     }
 
-    pub fn update(&mut self, input_state: &InputState, dt: Duration, dimension: &mut Dimension) {
+    pub fn update(
+        &mut self,
+        input_state: &InputState,
+        dt: Duration,
+        dimension: &mut Dimension,
+        event_queue: &mut Vec<PhysicsEvent>,
+    ) {
         self.camera.update(input_state, dt);
         let dt = dt.as_secs_f32();
         self.physic_body.update_physics(dt);
@@ -100,28 +107,37 @@ impl PlayerObject {
             ItemType::Item(true_item) => todo!(),
         }
 
-        let origin = self.physic_body.position.raw_add(Self::CAMERA_OFFSET);
-        let direction = forward;
+        // // Теперь двигаем тело и разрешаем коллизии
+        self.physic_body.move_and_resolve(dimension, dt);
+    }
 
-        // let start = Instant::now();
-        let raycast_result = raycast(dimension, origin, direction, 8.0);
-        // println!("Поиск рейкаста: {} ms", start.elapsed().as_millis());
-
-        if let Some(raycast) = raycast_result {
-            if input_state.is_mouse_just_pressed(MouseButton::Left) {
-                dimension.set_block_loaded(raycast.target_block, Block::default());
-            }
-            if let types::item::ItemType::Block(block) = self.get_hand_item().item_type {
-                if input_state.is_mouse_just_pressed(MouseButton::Right) {
-                    if !self.physic_body.overlap_with(raycast.previous_block) {
+    pub fn process_rmb(
+        &mut self,
+        input_state: &InputState,
+        dimension: &mut Dimension,
+        raycast: crate::raycast::RaycastResult<GlobalCoords>,
+        event_queue: &mut Vec<PhysicsEvent>,
+    ) {
+        if let types::item::ItemType::Block(block) = self.get_hand_item().item_type {
+            if input_state.is_mouse_just_pressed(MouseButton::Right) {
+                if !self.physic_body.overlap_with(raycast.previous_block) {
+                    // println!("block_coords: {:#?}", raycast.previous_block);
+                    if block.get_type() == BlockType::GravityModulator {
+                        Self::place_gravity_modulator(raycast.previous_block, block, event_queue);
+                    } else {
                         dimension.set_block_loaded(raycast.previous_block, block);
                     }
                 }
             }
         }
+    }
 
-        // // Теперь двигаем тело и разрешаем коллизии
-        self.physic_body.move_and_resolve(dimension, dt);
+    fn place_gravity_modulator(
+        coords: GlobalCoords,
+        block: Block,
+        event_queue: &mut Vec<PhysicsEvent>,
+    ) {
+        event_queue.push(PhysicsEvent::PlaceBlock(coords, block));
     }
 
     #[inline]
@@ -146,16 +162,11 @@ impl PlayerObject {
             .get_world_uniform(self.get_camera_position())
     }
 
-    pub fn get_camera_hand_uniform(&self) -> [[f32; 4]; 4] {
-        self.camera.lens.get_proj_mat().to_cols_array_2d()
-    }
-
     pub fn update_inventory_meshes(&mut self, renderer: &mut VkBackend) {
         if self.hand_dirty {
             if let Some(data) = self.hand_gpu_handle {
-                renderer.buffer_manager.unload_hand(data);
+                renderer.unload_hand(data);
             }
-            
 
             let hand_offset = Vec3::new(0.2, -0.4, 1.5);
 
@@ -173,7 +184,8 @@ impl PlayerObject {
 
             renderer.load_hand(
                 self.hand_item.item_type.get_hand_model(),
-                final_hand_model.to_cols_array_2d(),
+                (self.camera.lens.get_proj_mat() * final_hand_model).to_cols_array_2d(),
+                // Mat4::IDENTITY.to_cols_array_2d()
             );
             self.hand_dirty = false;
         }

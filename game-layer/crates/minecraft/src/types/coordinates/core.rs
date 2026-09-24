@@ -7,6 +7,7 @@ pub type GlobalCoordsType = i64;
 pub type ChunkCoordsType = i32;
 pub type RegionCoordsType = i32;
 pub type InRegionCoordsType = i32;
+pub type MiniChunkCoordsType = u32;
 
 pub type LocalCoords = Coords<Local, LocalCoordsType>;
 pub type InternalCoords = Coords<Internal, InternalCoordsType>;
@@ -14,6 +15,7 @@ pub type GlobalCoords = Coords<Global, GlobalCoordsType>;
 pub type ChunkCoords = Coords<Chunk, ChunkCoordsType>;
 pub type RegionCoords = Coords<Region, RegionCoordsType>;
 pub type InRegionCoords = Coords<InRegion, InRegionCoordsType>;
+pub type MiniChunkCoords = Coords<MiniChunk, MiniChunkCoordsType>;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Local;
@@ -33,6 +35,9 @@ pub struct Region;
 #[derive(Clone, Eq, Hash, PartialEq, Copy, Debug)]
 pub struct InRegion;
 
+#[derive(Clone, Eq, Hash, PartialEq, Copy, Debug)]
+pub struct MiniChunk;
+
 use std::marker::PhantomData;
 
 use lib_core::math::vectors::vec3::core::Vector3;
@@ -41,8 +46,12 @@ use lib_core::math::vectors::vec3::core::Vector3;
 #[derive(Clone, Copy, Eq, Hash, PartialEq, Default, Debug)]
 pub struct Coords<S, N>(pub Vector3<N>, pub std::marker::PhantomData<S>);
 
+pub trait CoordsTrait {}
+impl<S, N> CoordsTrait for Coords<S, N> {}
+// impl CoordsTrait<Chunk, ChunkCoordsType> for ChunkCoords {}
+
 impl<S, N> Coords<S, N> {
-    pub fn new(x: N, y: N, z: N) -> Coords<S, N> {
+    pub const fn new(x: N, y: N, z: N) -> Coords<S, N> {
         Coords(Vector3::new(x, y, z), PhantomData)
     }
 }

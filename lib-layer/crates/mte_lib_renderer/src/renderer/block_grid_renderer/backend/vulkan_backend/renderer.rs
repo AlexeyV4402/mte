@@ -1,5 +1,5 @@
 use std::ffi::CStr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use ash::vk::*;
 use ash::{Entry, vk};
@@ -8,10 +8,11 @@ use mte_macros::vfs_include_vk_shader;
 use wgpu::rwh::{HasDisplayHandle, HasWindowHandle};
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::builder::{
-    DepthBuffer, SyncObjects, VkBuilder, create_command_pool_and_sync
+    DepthBuffer, SyncObjects, VkBuilder, create_command_pool, create_sync
 };
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::debug::init_debug_utils;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::{
-    ChunkGpuHandle, HandGpuHandle, IndirectBufferManager
+    ChunkGpuHandle, HandGpuHandle, IndirectBufferManager, PhysObjectGpuHandle
 };
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::VkBufferDataHV;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::descriptors::Descriptors;
@@ -39,10 +40,16 @@ pub struct VkBackend {
     // Конвейер рендеринга
     pub render_pass: vk::RenderPass,
     pub framebuffers: Vec<vk::Framebuffer>,
+
     pub chunks_pipeline_layout: vk::PipelineLayout,
     pub chunks_pipeline: vk::Pipeline,
+
     pub hand_pipeline_layout: vk::PipelineLayout,
     pub hand_pipeline: vk::Pipeline,
+
+    pub phys_objects_pipeline_layout: vk::PipelineLayout,
+    pub phys_objects_pipeline: vk::Pipeline,
+
     pub cmd_pool: vk::CommandPool,
     pub sync_objects: SyncObjects,
     pub command_buffers: Vec<vk::CommandBuffer>,
@@ -60,6 +67,8 @@ pub struct VkBackend {
     pub descriptors: Descriptors,
 
     pub static_data: StaticData,
+
+    pub hand_mat: [[f32; 4]; 4],
 }
 
 impl VkBackend {
@@ -79,6 +88,12 @@ impl VkBackend {
         let hand_frag = vfs_include_vk_shader!(
             "workspace://game-layer/assets/minecraft/shaders/hand.fragment.glsl"
         );
+        let phys_objects_vert = vfs_include_vk_shader!(
+            "workspace://game-layer/assets/minecraft/shaders/phys_objects.vertex.glsl"
+        );
+        let phys_objects_frag = vfs_include_vk_shader!(
+            "workspace://game-layer/assets/minecraft/shaders/phys_objects.fragment.glsl"
+        );
 
         let entry = unsafe { Entry::load().unwrap() };
 
@@ -88,10 +103,10 @@ impl VkBackend {
         let raw_extensions = ash_window::enumerate_required_extensions(display_handle).unwrap();
 
         // 3. Переводим пойнтеры в массив для InstanceCreateInfo
-        let instance_extensions: Vec<*const std::ffi::c_char> = raw_extensions
-            .iter()
-            .map(|&ext| ext)
-            .collect();
+        let mut instance_extensions: Vec<*const std::ffi::c_char> =
+            raw_extensions.iter().map(|&ext| ext).collect();
+
+        instance_extensions.push(ash::ext::debug_utils::NAME as *const CStr as *const i8);
 
         let (entry, instance) = VkBuilder::create_instance(entry, &instance_extensions);
 
@@ -125,7 +140,7 @@ impl VkBackend {
 
         struct QueueFamilyInfo {
             queue_family_index: usize,
-            queue_prop: QueueFamilyProperties,
+            _queue_prop: QueueFamilyProperties,
         }
 
         let mut queue_infos = vec![];
@@ -133,7 +148,7 @@ impl VkBackend {
         for (index, i) in queue_family_prop.iter().enumerate() {
             queue_infos.push(QueueFamilyInfo {
                 queue_family_index: index,
-                queue_prop: *i,
+                _queue_prop: *i,
             });
         }
 
@@ -163,6 +178,8 @@ impl VkBackend {
                 .expect("Error create device")
         };
 
+        init_debug_utils(&instance, &device);
+
         let main_graphics_queue = unsafe { device.get_device_queue(0, 0) };
 
         let surface_format = vk::SurfaceFormatKHR {
@@ -181,7 +198,16 @@ impl VkBackend {
                 window.inner_size(),
             );
 
-        let (cmd_pool, sync_objects) = create_command_pool_and_sync(&device, 0, 2);
+        let image_count = unsafe {
+            swapchain_loader
+                .get_swapchain_images(swapchain)
+                .unwrap()
+                .len()
+        };
+        let (cmd_pool, sync_objects) = (
+            create_command_pool(&device, 0),
+            create_sync(&device, 2, image_count),
+        );
 
         let alloc_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(cmd_pool)
@@ -223,6 +249,10 @@ impl VkBackend {
         let chunks_frag_shader_module = VkBuilder::create_shader_module(&device, chunks_frag);
         let hand_vert_shader_module = VkBuilder::create_shader_module(&device, hand_vert);
         let hand_frag_shader_module = VkBuilder::create_shader_module(&device, hand_frag);
+        let phys_objects_vert_shader_module =
+            VkBuilder::create_shader_module(&device, phys_objects_vert);
+        let phys_objects_frag_shader_module =
+            VkBuilder::create_shader_module(&device, phys_objects_frag);
 
         let mut buffer_manager = IndirectBufferManager::new(&device, &memory_prop);
 
@@ -249,7 +279,8 @@ impl VkBackend {
             buffer_manager.matrix_buffer.gpu_buffers[0].buffer,
         );
 
-        let chunks_pipeline_layout = VkBuilder::create_pipeline_layout(&device, &descriptors.chunks_layouts());
+        let chunks_pipeline_layout =
+            VkBuilder::create_pipeline_layout(&device, &descriptors.chunks_layouts());
 
         let chunks_pipeline = VkBuilder::create_graphics_pipeline(
             &device,
@@ -259,7 +290,22 @@ impl VkBackend {
             chunks_frag_shader_module,
         );
 
-        let hand_pipeline_layout = VkBuilder::create_pipeline_layout_with_push_const_range(&device, &descriptors.hand_layouts(), 64);
+        let phys_objects_pipeline_layout =
+            VkBuilder::create_pipeline_layout(&device, &descriptors.phys_objects_layouts());
+
+        let phys_objects_pipeline = VkBuilder::create_graphics_pipeline(
+            &device,
+            phys_objects_pipeline_layout,
+            render_pass,
+            phys_objects_vert_shader_module,
+            phys_objects_frag_shader_module,
+        );
+
+        let hand_pipeline_layout = VkBuilder::create_pipeline_layout_with_push_const_range(
+            &device,
+            &descriptors.hand_layouts(),
+            64,
+        );
 
         let hand_pipeline = VkBuilder::create_graphics_pipeline(
             &device,
@@ -302,6 +348,8 @@ impl VkBackend {
             chunks_pipeline,
             hand_pipeline_layout,
             hand_pipeline,
+            phys_objects_pipeline_layout,
+            phys_objects_pipeline,
             cmd_pool,
             sync_objects,
             command_buffers,
@@ -311,6 +359,7 @@ impl VkBackend {
             camera_buffer,
             descriptors,
             static_data,
+            hand_mat: Mat4::IDENTITY.to_cols_array_2d(),
         }
     }
 
@@ -366,19 +415,30 @@ impl VkBackend {
             // Предположим, что мы его удаляем для простоты, если конструктор не оптимизирован:
             self.swapchain_loader.destroy_swapchain(old_swapchain, None);
 
-            let (new_swapchain, new_views, new_extent, _) = VkBuilder::create_swapchain(
-                &self.entry, // Если они сохранены в Renderer, берем их, либо передай аргументами
-                &self.instance,
-                &self.device,
-                self.phys_dev,
-                self.surface,
-                surface_format,
-                new_size,
-            );
+            let (new_swapchain, new_views, new_extent, swapchain_loader) =
+                VkBuilder::create_swapchain(
+                    &self.entry, // Если они сохранены в Renderer, берем их, либо передай аргументами
+                    &self.instance,
+                    &self.device,
+                    self.phys_dev,
+                    self.surface,
+                    surface_format,
+                    new_size,
+                );
 
             self.swapchain = new_swapchain;
             self.swapchain_image_views = new_views;
             self.swapchain_extent = new_extent;
+
+            let swapchain_image_count = unsafe {
+                swapchain_loader
+                    .get_swapchain_images(new_swapchain)
+                    .unwrap()
+                    .len()
+            };
+
+            self.sync_objects
+                .recreate_semaphores(swapchain_image_count, &self.device);
 
             // ====================================================================
             // ШАГ 3: СОЗДАНИЕ НОВОГО БУФЕРА ГЛУБИНЫ ПОД НОВЫЙ РАЗМЕР ОКНА
@@ -436,15 +496,17 @@ impl VkBackend {
         handle
     }
 
-    pub fn load_hand(
+    pub fn load_phys_object(
         &mut self,
         primitive: BlockIndexedPrimitive,
+        vector: [i32; 4],
         matrix: [[f32; 4]; 4],
-    ) -> Option<HandGpuHandle> {
+    ) -> Option<PhysObjectGpuHandle> {
         let current_cmd = self.command_buffers[self.current_frame];
 
-        let handle = self.buffer_manager.load_hand(
+        let handle = self.buffer_manager.load_phys_object(
             primitive,
+            vector,
             matrix,
             &self.device,
             &self.memory_prop,
@@ -454,12 +516,52 @@ impl VkBackend {
         handle
     }
 
-    pub fn load_unhand(
+    pub fn update_phys_object(
         &mut self,
-        data: HandGpuHandle,
-    ) {
-        self.buffer_manager.unload_hand(data);
+        old_handle: PhysObjectGpuHandle,
+        vector: [i32; 4],
+        matrix: [[f32; 4]; 4],
+    ) -> PhysObjectGpuHandle {
+        let current_cmd = self.command_buffers[self.current_frame];
 
+        let handle = self.buffer_manager.update_phys_object(
+            old_handle,
+            vector,
+            matrix,
+            &self.device,
+            &self.memory_prop,
+            current_cmd,
+        );
+
+        handle
+    }
+
+    pub fn unload_phys_object(&mut self, handle: PhysObjectGpuHandle) {
+        self.buffer_manager.unload_phys_object(handle);
+    }
+
+    pub fn load_hand(
+        &mut self,
+        primitive: BlockIndexedPrimitive,
+        matrix: [[f32; 4]; 4],
+    ) -> Option<HandGpuHandle> {
+        self.hand_mat = matrix;
+        let current_cmd = self.command_buffers[self.current_frame];
+
+        let handle =
+            self.buffer_manager
+                .load_hand(primitive, &self.device, &self.memory_prop, current_cmd);
+
+        handle
+    }
+
+    pub fn unload_chunk(&mut self, handle: ChunkGpuHandle) {
+        self.buffer_manager.unload_chunk(handle);
+    }
+
+    pub fn unload_hand(&mut self, data: HandGpuHandle) {
+        self.hand_mat = Mat4::IDENTITY.to_cols_array_2d();
+        self.buffer_manager.unload_hand(data);
     }
 
     pub fn begin_frame(&mut self) {
@@ -500,11 +602,7 @@ impl VkBackend {
         }
     }
 
-    pub fn unload_chunk(&mut self, handle: ChunkGpuHandle) {
-        self.buffer_manager.unload_chunk(handle);
-    }
-
-    pub fn end_frame(&mut self, hand_mat: [[f32; 4]; 4]) -> std::result::Result<(), ash::vk::Result> {
+    pub fn end_frame(&mut self) -> std::result::Result<(), ash::vk::Result> {
         let frame = self.current_frame;
         let img_idx = self.image_index as usize;
         let cmd = self.command_buffers[frame];
@@ -551,6 +649,15 @@ impl VkBackend {
                 .dst_access_mask(vk::AccessFlags::SHADER_READ) // Защищаем чтение индексов кубов
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .buffer(self.buffer_manager.vector_buffer.gpu_buffers[0].buffer) // Достаем VkBuffer твоего PageBuffer
+                .offset(0)
+                .size(vk::WHOLE_SIZE);
+
+            let matrix_barrier = vk::BufferMemoryBarrier::default()
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ) // Защищаем чтение индексов кубов
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .buffer(self.buffer_manager.matrix_buffer.gpu_buffers[0].buffer) // Достаем VkBuffer твоего PageBuffer
                 .offset(0)
                 .size(vk::WHOLE_SIZE);
@@ -561,6 +668,7 @@ impl VkBackend {
                 vertex_barrier,
                 index_barrier,
                 vector_barrier,
+                matrix_barrier,
             ];
 
             self.device.cmd_pipeline_barrier(
@@ -661,37 +769,69 @@ impl VkBackend {
             // ====================================================================
 
             let stride = std::mem::size_of::<vk::DrawIndexedIndirectCommand>() as u32;
-            let total_slots = self
-                .buffer_manager
-                .indirect_buffer
-                .cpu_indexed_indirect_buffer
-                .len() as u32;
+            let chunks_slots = IndirectBufferManager::ONE_VECTOR_BUFFER_SLOTS_COUNT as u32;
 
-                self.device.cmd_draw_indexed_indirect(
-                    cmd,
-                    self.buffer_manager
-                        .indirect_buffer
-                        .gpu_indexed_indirect_buffer
-                        .buffer,
-                    stride as vk::DeviceSize,
-                    total_slots - 1,
-                    stride,
-                );
+            self.device.cmd_draw_indexed_indirect(
+                cmd,
+                self.buffer_manager
+                    .indirect_buffer
+                    .gpu_indexed_indirect_buffer
+                    .buffer,
+                stride as vk::DeviceSize,
+                chunks_slots,
+                stride,
+            );
+
+            self.device.cmd_bind_pipeline(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.phys_objects_pipeline,
+            );
+
+            self.device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.phys_objects_pipeline_layout,
+                0,
+                &self.descriptors.phys_objects_sets(),
+                &[],
+            );
+
+            let phys_objects_slots = IndirectBufferManager::ONE_MATRIX_BUFFER_SLOTS_COUNT as u32;
+
+            self.device.cmd_draw_indexed_indirect(
+                cmd,
+                self.buffer_manager
+                    .indirect_buffer
+                    .gpu_indexed_indirect_buffer
+                    .buffer,
+                stride as vk::DeviceSize * (1 + chunks_slots as u64),
+                phys_objects_slots,
+                stride,
+            );
 
             let clear_attachment = vk::ClearAttachment::default()
                 .aspect_mask(vk::ImageAspectFlags::DEPTH) // Стираем только карту глубины кадра
                 .clear_value(vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 }
+                    depth_stencil: vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    },
                 });
 
             let clear_rect = vk::ClearRect::default()
-                .rect(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: self.swapchain_extent })
+                .rect(vk::Rect2D {
+                    offset: vk::Offset2D { x: 0, y: 0 },
+                    extent: self.swapchain_extent,
+                })
                 .layer_count(1);
 
-            self.device.cmd_clear_attachments(cmd, &[clear_attachment], &[clear_rect]);
+            self.device
+                .cmd_clear_attachments(cmd, &[clear_attachment], &[clear_rect]);
 
             // Включаем конвейер руки
-            self.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.hand_pipeline);
+            self.device
+                .cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.hand_pipeline);
 
             self.device.cmd_bind_descriptor_sets(
                 cmd,
@@ -703,13 +843,22 @@ impl VkBackend {
             );
 
             // ТОЛКАЕМ МАТРИЦУ РУКИ НА GPU (Push-константы)
-            let hand_bytes = bytemuck::cast_slice(&hand_mat);
-            self.device.cmd_push_constants(cmd, self.hand_pipeline_layout, vk::ShaderStageFlags::VERTEX, 0, &hand_bytes);
+            let hand_bytes = bytemuck::cast_slice(&self.hand_mat);
+            self.device.cmd_push_constants(
+                cmd,
+                self.hand_pipeline_layout,
+                vk::ShaderStageFlags::VERTEX,
+                0,
+                &hand_bytes,
+            );
 
             // Вызываем INDIRECT-отрисовку руки из САМОГО НАЧАЛА буфера (Слот №0)
             self.device.cmd_draw_indexed_indirect(
                 cmd,
-                self.buffer_manager.indirect_buffer.gpu_indexed_indirect_buffer.buffer,
+                self.buffer_manager
+                    .indirect_buffer
+                    .gpu_indexed_indirect_buffer
+                    .buffer,
                 0, // Смещение 0 байт — читаем строго Слот №0!
                 1, // Рисуем строго одну команду (нашу руку)
                 stride,

@@ -33,12 +33,10 @@ impl ItemType {
         match self {
             ItemType::Block(block) => {
                 let material_id = block.get_type() as u32;
-                // println!("Материал: {}", material_id);
                 let mut vertices = Vec::with_capacity(24);
                 let mut indices = Vec::with_capacity(36);
 
                 // Вспомогательное замыкание для быстрой сборки квада (грани куба)
-                // Принимает 4 локальные вершины, ID стороны и ID материала
                 let mut add_face = |p0: (u32, u32, u32),
                                     p1: (u32, u32, u32),
                                     p2: (u32, u32, u32),
@@ -47,19 +45,20 @@ impl ItemType {
                     let start_idx = vertices.len() as u32;
 
                     // Добавляем 4 вершины для квада
-                    vertices.push(BlockVertex::new(p0.0, p0.1, p0.2, side_id, material_id));
-                    vertices.push(BlockVertex::new(p1.0, p1.1, p1.2, side_id, material_id));
-                    vertices.push(BlockVertex::new(p2.0, p2.1, p2.2, side_id, material_id));
-                    vertices.push(BlockVertex::new(p3.0, p3.1, p3.2, side_id, material_id));
+                    vertices.push(BlockVertex::new(p0.0, p0.1, p0.2, side_id, material_id)); // 0
+                    vertices.push(BlockVertex::new(p1.0, p1.1, p1.2, side_id, material_id)); // 1
+                    vertices.push(BlockVertex::new(p2.0, p2.1, p2.2, side_id, material_id)); // 2
+                    vertices.push(BlockVertex::new(p3.0, p3.1, p3.2, side_id, material_id)); // 3
 
-                    // Строим два треугольника для этой грани (стандартный порядок обхода)
+                    // ФИКС: Переворачиваем индексы против часовой стрелки (COUNTER_CLOCKWISE)
+                    // Теперь внешняя сторона грани всегда обходится правильно для Vulkan
                     indices.extend_from_slice(&[
                         start_idx,
+                        start_idx + 2,
                         start_idx + 1,
-                        start_idx + 2,
                         start_idx,
-                        start_idx + 2,
                         start_idx + 3,
+                        start_idx + 2,
                     ]);
                 };
 

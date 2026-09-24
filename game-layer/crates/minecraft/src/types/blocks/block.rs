@@ -15,7 +15,8 @@ define_blocks! {
     Ilya  => { solid: true,  shape: Shape::Full, profile: AllSides,       textures: ["packs://pack0/ilya.albedo.jpg"] },
     Grass => { solid: true,  shape: Shape::Full, profile: TopBottomSides, textures: ["packs://pack0/grass_block_top.albedo.png", "packs://pack0/dirt.albedo.png", "packs://pack0/grass_block_side.albedo.png"] },
     Stone => { solid: true,  shape: Shape::Full, profile: AllSides,       textures: ["packs://pack0/stone.albedo.png"] },
-    OakLog => { solid: true,  shape: Shape::Full, profile: AxisAligned,   textures: ["packs://pack0/oak_log_top.albedo.png", "packs://pack0/oak_log_side.albedo.png"] }
+    OakLog => { solid: true,  shape: Shape::Full, profile: AxisAligned,   textures: ["packs://pack0/oak_log_top.albedo.png", "packs://pack0/oak_log_side.albedo.png"] },
+    GravityModulator => { solid: true,  shape: Shape::Full, profile: AllSides,       textures: ["packs://pack0/gravity_modulator.albedo.png"] },
 }
 
 pub const CUBE_LINES: [[f32; 3]; 24] = [

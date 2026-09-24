@@ -58,6 +58,7 @@ impl_vector_cast!(u32 => i32, as_i32);
 impl_vector_cast!(i64 => i32, as_i32);
 
 // .as_f32()
+impl_vector_cast!(u32 => f32, as_f32);
 impl_vector_cast!(i32 => f32, as_f32);
 
 // .as_i64()

@@ -6,6 +6,7 @@ mod app;
 mod config;
 mod gui;
 mod network;
+mod phys_engine;
 mod raycast;
 mod types;
 mod utils;

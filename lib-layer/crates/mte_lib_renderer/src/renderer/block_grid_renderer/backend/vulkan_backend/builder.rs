@@ -88,19 +88,20 @@ impl VkBuilder {
                 .expect("Не удалось создать PipelineLayout")
         }
     }
-    
+
     pub fn create_pipeline_layout_with_push_const_range(
         device: &ash::Device,
         layouts: &[DescriptorSetLayout],
-        size: u32
+        size: u32,
     ) -> vk::PipelineLayout {
         // 64 байта под mat4 (матрица камеры)
         let push_constant_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .offset(0)
             .size(size);
-        let create_info = vk::PipelineLayoutCreateInfo::default().set_layouts(layouts) 
-        .push_constant_ranges(std::slice::from_ref(&push_constant_range));
+        let create_info = vk::PipelineLayoutCreateInfo::default()
+            .set_layouts(layouts)
+            .push_constant_ranges(std::slice::from_ref(&push_constant_range));
 
         unsafe {
             device
@@ -252,7 +253,6 @@ impl VkBuilder {
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .final_layout(vk::ImageLayout::PRESENT_SRC_KHR); // Готов к выводу через Swapchain
 
-        // println!("depth_buffer_format: {:?}", depth_buffer_format);
         let depth_attachment = vk::AttachmentDescription::default()
             .format(depth_buffer_format)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -478,7 +478,10 @@ impl VkBuilder {
         }
     }
 
-    pub fn create_instance(entry: Entry, instance_required_extensions: &[*const i8]) -> (Entry, ash::Instance) {
+    pub fn create_instance(
+        entry: Entry,
+        instance_required_extensions: &[*const i8],
+    ) -> (Entry, ash::Instance) {
         let version = unsafe {
             entry
                 .try_enumerate_instance_version()
@@ -505,7 +508,7 @@ impl VkBuilder {
 
         let instance_info = InstanceCreateInfo::default()
             .enabled_extension_names(instance_required_extensions)
-            // .enabled_layer_names(&layers_pointers)
+            .enabled_layer_names(&layers_pointers)
             .application_info(&app_info);
 
         let instance = unsafe {
@@ -605,22 +608,28 @@ pub struct SyncObjects {
     pub in_flight_fences: Vec<vk::Fence>,
 }
 
-pub fn create_command_pool_and_sync(
+impl SyncObjects {
+    pub fn recreate_semaphores(&mut self, swapchain_image_count: usize, device: &ash::Device) {
+        self.render_finished_semaphores
+            .drain(..)
+            .for_each(|s| unsafe {
+                device.destroy_semaphore(s, None);
+            });
+        let semaphore_info = vk::SemaphoreCreateInfo::default();
+        for _ in 0..swapchain_image_count {
+            unsafe {
+                self.render_finished_semaphores
+                    .push(device.create_semaphore(&semaphore_info, None).unwrap());
+            }
+        }
+    }
+}
+
+pub fn create_sync(
     device: &ash::Device,
-    queue_family_index: u32,
     max_frames_in_flight: usize,
-) -> (vk::CommandPool, SyncObjects) {
-    // 1. Создаем пул команд
-    let pool_info = vk::CommandPoolCreateInfo::default()
-        .queue_family_index(queue_family_index)
-        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER); // Чтобы переписывать буфер каждый кадр
-
-    let command_pool = unsafe {
-        device
-            .create_command_pool(&pool_info, None)
-            .expect("Не удалось создать CommandPool")
-    };
-
+    swapchain_image_count: usize,
+) -> SyncObjects {
     // 2. Создаем структуры синхронизации кадров
     let semaphore_info = vk::SemaphoreCreateInfo::default();
     let fence_info = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED); // Важно: первый кадр не должен заблокировать CPU
@@ -633,9 +642,14 @@ pub fn create_command_pool_and_sync(
         unsafe {
             image_available_semaphores
                 .push(device.create_semaphore(&semaphore_info, None).unwrap());
+            in_flight_fences.push(device.create_fence(&fence_info, None).unwrap());
+        }
+    }
+
+    for _ in 0..swapchain_image_count {
+        unsafe {
             render_finished_semaphores
                 .push(device.create_semaphore(&semaphore_info, None).unwrap());
-            in_flight_fences.push(device.create_fence(&fence_info, None).unwrap());
         }
     }
 
@@ -645,7 +659,22 @@ pub fn create_command_pool_and_sync(
         in_flight_fences,
     };
 
-    (command_pool, sync_objects)
+    sync_objects
+}
+
+pub fn create_command_pool(device: &ash::Device, queue_family_index: u32) -> vk::CommandPool {
+    // 1. Создаем пул команд
+    let pool_info = vk::CommandPoolCreateInfo::default()
+        .queue_family_index(queue_family_index)
+        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER); // Чтобы переписывать буфер каждый кадр
+
+    let command_pool = unsafe {
+        device
+            .create_command_pool(&pool_info, None)
+            .expect("Не удалось создать CommandPool")
+    };
+
+    command_pool
 }
 
 pub struct TextureArrayImage {
