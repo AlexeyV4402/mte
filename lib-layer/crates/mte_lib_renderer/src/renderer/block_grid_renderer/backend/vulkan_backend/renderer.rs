@@ -1,5 +1,5 @@
 use std::ffi::CStr;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use ash::vk::*;
 use ash::{Entry, vk};
@@ -16,7 +16,9 @@ use crate::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buff
 };
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::VkBufferDataHV;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::descriptors::Descriptors;
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::framebuffer_object::FramebufferObject;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::static_data::StaticData;
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::swapchain_object::SwapchainObject;
 use crate::renderer::block_grid_renderer::render_objects::camera::WorldCameraUniform;
 use crate::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use crate::renderer::block_grid_renderer::types::RendererCreateArgs;
@@ -31,15 +33,13 @@ pub struct VkBackend {
     pub graphics_queue: vk::Queue,
 
     // Свопчейн и поверхности
-    pub swapchain_loader: ash::khr::swapchain::Device,
-    pub swapchain: vk::SwapchainKHR,
-    pub swapchain_extent: vk::Extent2D,
-    pub swapchain_image_views: Vec<vk::ImageView>,
+    pub swapchain_object: SwapchainObject,
+
     pub depth_buffer: DepthBuffer,
 
     // Конвейер рендеринга
     pub render_pass: vk::RenderPass,
-    pub framebuffers: Vec<vk::Framebuffer>,
+    pub framebuffer: FramebufferObject,
 
     pub chunks_pipeline_layout: vk::PipelineLayout,
     pub chunks_pipeline: vk::Pipeline,
@@ -132,11 +132,11 @@ impl VkBackend {
         let memory_prop = unsafe { instance.get_physical_device_memory_properties(phys_dev) };
         let queue_family_prop =
             unsafe { instance.get_physical_device_queue_family_properties(phys_dev) };
-        let phys_prop = unsafe { instance.get_physical_device_properties(phys_dev) };
+        // let phys_prop = unsafe { instance.get_physical_device_properties(phys_dev) };
 
-        if phys_prop.limits.max_push_constants_size < 160 {
-            panic!("Видеоадаптер не соответствует требованиям");
-        }
+        // if phys_prop.limits.max_push_constants_size < 160 {
+        //     panic!("Видеоадаптер не соответствует требованиям");
+        // }
 
         struct QueueFamilyInfo {
             queue_family_index: usize,
@@ -187,23 +187,18 @@ impl VkBackend {
             color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
         };
 
-        let (swapchain, swapchain_image_views, swapchain_extent, swapchain_loader) =
-            VkBuilder::create_swapchain(
-                &entry,
-                &instance,
-                &device,
-                phys_dev,
-                surface,
-                surface_format,
-                window.inner_size(),
-            );
+        let swapchain_object = SwapchainObject::new(
+            &entry,
+            &instance,
+            &device,
+            phys_dev,
+            surface,
+            surface_format,
+            window.inner_size(),
+        );
 
-        let image_count = unsafe {
-            swapchain_loader
-                .get_swapchain_images(swapchain)
-                .unwrap()
-                .len()
-        };
+        let image_count = swapchain_object.get_image_count();
+
         let (cmd_pool, sync_objects) = (
             create_command_pool(&device, 0),
             create_sync(&device, 2, image_count),
@@ -220,30 +215,19 @@ impl VkBackend {
                 .expect("Не удалось аллоцировать Command Buffers")
         };
 
-        let depth_buffer =
-            DepthBuffer::new(&instance, &device, phys_dev, &memory_prop, swapchain_extent);
+        let depth_buffer = DepthBuffer::new(
+            &instance,
+            &device,
+            phys_dev,
+            &memory_prop,
+            swapchain_object.extent,
+        );
 
-        let mut framebuffers = Vec::new();
         let render_pass =
             VkBuilder::create_render_pass(&device, surface_format, depth_buffer.format);
 
-        for &swapchain_view in &swapchain_image_views {
-            let attachments = [swapchain_view, depth_buffer.view];
-
-            let framebuffer_info = vk::FramebufferCreateInfo::default()
-                .render_pass(render_pass)
-                .attachments(&attachments)
-                .width(swapchain_extent.width)
-                .height(swapchain_extent.height)
-                .layers(1);
-
-            let framebuffer = unsafe {
-                device
-                    .create_framebuffer(&framebuffer_info, None)
-                    .expect("Не удалось создать Framebuffer")
-            };
-            framebuffers.push(framebuffer);
-        }
+        let framebuffer =
+            FramebufferObject::new(&device, &swapchain_object, &depth_buffer, render_pass);
 
         let chunks_vert_shader_module = VkBuilder::create_shader_module(&device, chunks_vert);
         let chunks_frag_shader_module = VkBuilder::create_shader_module(&device, chunks_frag);
@@ -337,13 +321,10 @@ impl VkBackend {
             surface,
             device,
             graphics_queue: main_graphics_queue,
-            swapchain_loader,
-            swapchain,
-            swapchain_extent,
-            swapchain_image_views,
+            swapchain_object,
             depth_buffer,
             render_pass,
-            framebuffers,
+            framebuffer,
             chunks_pipeline_layout,
             chunks_pipeline,
             hand_pipeline_layout,
@@ -379,24 +360,8 @@ impl VkBackend {
             // ====================================================================
 
             // Уничтожаем старые фреймбуферы (они были привязаны к старому разрешению холстов)
-            for &fb in &self.framebuffers {
-                self.device.destroy_framebuffer(fb, None);
-            }
-            self.framebuffers.clear();
-
-            // Полностью уничтожаем старый буфер глубины и освобождаем его VRAM память
-            self.device.destroy_image_view(self.depth_buffer.view, None);
-            self.device.destroy_image(self.depth_buffer.image, None);
-            self.device.free_memory(self.depth_buffer.memory, None);
-
-            // Уничтожаем старые ImageView для картинок свопчейна
-            for &view in &self.swapchain_image_views {
-                self.device.destroy_image_view(view, None);
-            }
-            self.swapchain_image_views.clear();
-
-            // Запоминаем старый свопчейн, чтобы передать его как "old_swapchain" для бесшовного перехода
-            let old_swapchain = self.swapchain;
+            self.framebuffer.destroy(&self.device);
+            self.depth_buffer.destroy(&self.device);
 
             // ====================================================================
             // ШАГ 2: ПЕРЕСОЗДАНИЕ СВОПЧЕЙНА С НОВЫМ РАЗРЕШЕНИЕМ
@@ -409,33 +374,17 @@ impl VkBackend {
                 color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
             };
 
-            // Вызываем твою функцию создания свопчейна.
-            // ВАЖНО: Если твой `VkBuilder::create_swapchain` не умеет принимать `old_swapchain`,
-            // то старый свопчейн нужно просто удалить через `destroy_swapchain` до этого шага.
-            // Предположим, что мы его удаляем для простоты, если конструктор не оптимизирован:
-            self.swapchain_loader.destroy_swapchain(old_swapchain, None);
+            self.swapchain_object.recreate(
+                &self.entry,
+                &self.instance,
+                &self.device,
+                self.phys_dev,
+                self.surface,
+                surface_format,
+                new_size,
+            );
 
-            let (new_swapchain, new_views, new_extent, swapchain_loader) =
-                VkBuilder::create_swapchain(
-                    &self.entry, // Если они сохранены в Renderer, берем их, либо передай аргументами
-                    &self.instance,
-                    &self.device,
-                    self.phys_dev,
-                    self.surface,
-                    surface_format,
-                    new_size,
-                );
-
-            self.swapchain = new_swapchain;
-            self.swapchain_image_views = new_views;
-            self.swapchain_extent = new_extent;
-
-            let swapchain_image_count = unsafe {
-                swapchain_loader
-                    .get_swapchain_images(new_swapchain)
-                    .unwrap()
-                    .len()
-            };
+            let swapchain_image_count = self.swapchain_object.get_image_count();
 
             self.sync_objects
                 .recreate_semaphores(swapchain_image_count, &self.device);
@@ -448,33 +397,19 @@ impl VkBackend {
                 &self.device,
                 self.phys_dev,
                 &self.memory_prop,
-                self.swapchain_extent,
+                self.swapchain_object.extent,
             );
 
             // ====================================================================
             // ШАГ 4: ПЕРЕСОЗДАНИЕ ФРЕЙМБУФЕРОВ
             // ====================================================================
             // Снова связываем новые ImageView свопчейна и новый общий буфер глубины
-            for &swapchain_view in &self.swapchain_image_views {
-                let attachments = [
-                    swapchain_view,         // Порядок СТРОГО как в RenderPass (Цвет — 0)
-                    self.depth_buffer.view, // Глубина — 1
-                ];
-
-                let framebuffer_info = vk::FramebufferCreateInfo::default()
-                    .render_pass(self.render_pass) // Наш RenderPass пересоздавать НЕ НАДО, его схема не изменилась
-                    .attachments(&attachments)
-                    .width(self.swapchain_extent.width)
-                    .height(self.swapchain_extent.height)
-                    .layers(1);
-
-                let framebuffer = self
-                    .device
-                    .create_framebuffer(&framebuffer_info, None)
-                    .expect("Не удалось воссоздать Framebuffer при ресайзе");
-
-                self.framebuffers.push(framebuffer);
-            }
+            self.framebuffer.recreate(
+                &self.device,
+                &self.swapchain_object,
+                &self.depth_buffer,
+                self.render_pass,
+            );
         }
     }
 
@@ -578,9 +513,10 @@ impl VkBackend {
             // Но чтобы узнать этот индекс, нам сначала нужен временный семафор.
             // Поэтому на этапе acquire_next_image мы используем семафор по индексу frame (0 или 1):
             let (image_index, _) = self
-                .swapchain_loader
+                .swapchain_object
+                .loader
                 .acquire_next_image(
-                    self.swapchain,
+                    self.swapchain_object.swapchain,
                     u64::MAX,
                     self.sync_objects.image_available_semaphores[frame], // Временно используем frame
                     vk::Fence::null(),
@@ -687,13 +623,11 @@ impl VkBackend {
             // ШАГ 2: НАЧАЛО RENDER PASS (ОЧИСТКА ЭКРАНА И ГЛУБИНЫ)
             // ====================================================================
             let clear_values = [
-                // Индекс 0: Очищаем цветной холст свопчейна в цвет неба
                 vk::ClearValue {
                     color: vk::ClearColorValue {
                         float32: [0.0, 0.0, 0.0, 1.0],
                     },
                 },
-                // Индекс 1: Очищаем буфер глубины в 1.0 (самая дальняя точка)
                 vk::ClearValue {
                     depth_stencil: vk::ClearDepthStencilValue {
                         depth: 1.0,
@@ -704,10 +638,10 @@ impl VkBackend {
 
             let render_pass_info = vk::RenderPassBeginInfo::default()
                 .render_pass(self.render_pass)
-                .framebuffer(self.framebuffers[self.image_index as usize]) // Наш фреймбуфер для текущего кадра свопчейна
+                .framebuffer(self.framebuffer.framebuffers[self.image_index as usize])
                 .render_area(vk::Rect2D {
                     offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: self.swapchain_extent,
+                    extent: self.swapchain_object.extent,
                 })
                 .clear_values(&clear_values);
 
@@ -721,12 +655,12 @@ impl VkBackend {
             let viewport = vk::Viewport::default()
                 .x(0.0)
                 .y(0.0)
-                .width(self.swapchain_extent.width as f32)
-                .height(self.swapchain_extent.height as f32)
+                .width(self.swapchain_object.extent.width as f32)
+                .height(self.swapchain_object.extent.height as f32)
                 .min_depth(0.0)
                 .max_depth(1.0);
 
-            let scissor = vk::Rect2D::default().extent(self.swapchain_extent);
+            let scissor = vk::Rect2D::default().extent(self.swapchain_object.extent);
 
             self.device.cmd_set_viewport(cmd, 0, &[viewport]);
             self.device.cmd_set_scissor(cmd, 0, &[scissor]);
@@ -822,7 +756,7 @@ impl VkBackend {
             let clear_rect = vk::ClearRect::default()
                 .rect(vk::Rect2D {
                     offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: self.swapchain_extent,
+                    extent: self.swapchain_object.extent,
                 })
                 .layer_count(1);
 
@@ -894,7 +828,7 @@ impl VkBackend {
 
             // Монитор будет ждать ИМЕННО тот семафор, который привязан к этой картинке
             let present_wait_semaphores = [self.sync_objects.render_finished_semaphores[img_idx]];
-            let present_swapchains = [self.swapchain];
+            let present_swapchains = [self.swapchain_object.swapchain];
             let present_image_indices = [self.image_index];
 
             let present_info = vk::PresentInfoKHR::default()
@@ -902,7 +836,8 @@ impl VkBackend {
                 .swapchains(&present_swapchains)
                 .image_indices(&present_image_indices);
 
-            self.swapchain_loader
+            self.swapchain_object
+                .loader
                 .queue_present(self.graphics_queue, &present_info)
                 .unwrap();
         }

@@ -15,7 +15,7 @@ use crate::types::blocks::block::{
     BLOCK_PROPERTIES_REGISTRY, CUBE_LINES, REGISTERED_TEXTURES_COUNT
 };
 use crate::types::world::World;
-use crate::world_generator::SuperSimplexGenerator;
+use crate::utils::world_generator::SuperSimplexGenerator;
 
 pub struct App {
     vk_backend: Option<VkBackend>,

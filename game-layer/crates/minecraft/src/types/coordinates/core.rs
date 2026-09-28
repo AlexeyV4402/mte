@@ -40,6 +40,7 @@ pub struct MiniChunk;
 
 use std::marker::PhantomData;
 
+use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::core::Vector3;
 
 #[repr(C)]
@@ -71,5 +72,25 @@ impl<S, N> From<(N, N, N)> for Coords<S, N> {
 impl<S, N> From<Vector3<N>> for Coords<S, N> {
     fn from(vec: Vector3<N>) -> Self {
         Self(vec, PhantomData)
+    }
+}
+
+pub trait PrecisePositionC32Coords {
+    fn get_chunk(&self) -> ChunkCoords;
+    fn get_local(&self) -> LocalCoords;
+    fn get_global_coords(&self) -> GlobalCoords;
+}
+
+impl PrecisePositionC32Coords for PrecisePositionC32 {
+    fn get_chunk(&self) -> ChunkCoords {
+        ChunkCoords::from(self.chunk)
+    }
+
+    fn get_local(&self) -> LocalCoords {
+        LocalCoords::from(self.in_chunk.floor_cw().as_u32())
+    }
+
+    fn get_global_coords(&self) -> GlobalCoords {
+        GlobalCoords::from(self.in_chunk.floor_cw().as_i64() + self.chunk.as_i64() * 32)
     }
 }

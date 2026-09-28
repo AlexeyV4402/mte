@@ -600,6 +600,14 @@ impl DepthBuffer {
             format,
         }
     }
+
+    pub unsafe fn destroy(&self, device: &ash::Device) {
+        unsafe {
+            device.destroy_image_view(self.view, None);
+            device.destroy_image(self.image, None);
+            device.free_memory(self.memory, None);
+        }
+    }
 }
 
 pub struct SyncObjects {

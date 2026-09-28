@@ -13,7 +13,6 @@ use lib_renderer::renderer::block_grid_renderer::render_objects::camera::{
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
 
-use crate::raycast::raycast;
 use crate::types;
 use crate::types::blocks::block::{Block, BlockType, REGISTERED_BLOCKS_COUNT};
 use crate::types::coordinates::core::GlobalCoords;
@@ -115,7 +114,7 @@ impl PlayerObject {
         &mut self,
         input_state: &InputState,
         dimension: &mut Dimension,
-        raycast: crate::raycast::RaycastResult<GlobalCoords>,
+        raycast: crate::utils::raycast::RaycastResult<GlobalCoords>,
         event_queue: &mut Vec<PhysicsEvent>,
     ) {
         if let types::item::ItemType::Block(block) = self.get_hand_item().item_type {

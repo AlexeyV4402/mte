@@ -9,15 +9,15 @@ use lib_renderer::renderer::block_grid_renderer::render_objects::camera::Rotatab
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
 
-use crate::phys_engine::PhysicsEngine;
-use crate::raycast::raycast;
+use crate::physics_world::PhysicsWorld;
 use crate::types::blocks::block::Block;
 use crate::types::coordinates::core::{ChunkCoords, GlobalCoords};
 use crate::types::dimension::Dimension;
 use crate::types::item::ItemType;
 use crate::types::player_object::PlayerObject;
+use crate::utils::raycast::raycast;
 use crate::utils::save_manager::SaveManager;
-use crate::world_generator::WorldGenerator;
+use crate::utils::world_generator::WorldGenerator;
 
 pub enum PhysicsEvent {
     PlaceBlock(GlobalCoords, Block),
@@ -31,19 +31,8 @@ pub struct World<G: WorldGenerator> {
     render_radius: i32,
     storage_radius: i32,
     overworld_save_manager: SaveManager,
-    physics_engine: PhysicsEngine,
+    physics_world: PhysicsWorld,
     event_queue: Vec<PhysicsEvent>,
-}
-
-pub fn process_cube<F: FnMut(ChunkCoords)>(mut function: F, center: Vector3<i32>, radius: i32) {
-    for y in (center.y - radius)..=(center.y + radius) {
-        for z in (center.z - radius)..=(center.z + radius) {
-            for x in (center.x - radius)..=(center.x + radius) {
-                function(ChunkCoords::new(x, y, z))
-                // self.overworld.prepare_chunk(ChunkCoords::new(x, y, z));
-            }
-        }
-    }
 }
 
 impl<G: WorldGenerator> World<G> {
@@ -64,7 +53,7 @@ impl<G: WorldGenerator> World<G> {
             overworld_save_manager: SaveManager::new(
                 ChunkCoords::from(player_coords.chunk).get_region(),
             ),
-            physics_engine: PhysicsEngine::default(),
+            physics_world: PhysicsWorld::default(),
             event_queue: Default::default(),
         }
     }
@@ -93,13 +82,13 @@ impl<G: WorldGenerator> World<G> {
     pub fn update(&mut self, dt: Duration, input_state: &InputState) {
         self.player_object
             .update(input_state, dt, &mut self.overworld, &mut self.event_queue);
-        self.physics_engine.update(dt);
+        self.physics_world.update(dt, &self.overworld);
 
         self.handle_debug_input(input_state);
 
         self.update_player_chunk();
         self.player_raycast(input_state);
-        self.physics_engine.read_queue(&mut self.event_queue);
+        self.physics_world.read_queue(&mut self.event_queue);
     }
 
     fn update_player_chunk(&mut self) {
@@ -145,12 +134,12 @@ impl<G: WorldGenerator> World<G> {
         let raycast_result = raycast(&self.overworld, origin, direction, 8.0);
 
         if let Some((phys_raycast, idx)) =
-            self.physics_engine.raycast_physics(origin, direction, 8.0)
+            self.physics_world.raycast_physics(origin, direction, 8.0)
         {
             if let Some(world_raycast) = raycast_result {
                 if phys_raycast.distance < world_raycast.distance {
                     if input_state.is_mouse_just_pressed(MouseButton::Left) {
-                        self.physics_engine.set_block(
+                        self.physics_world.set_block(
                             idx,
                             phys_raycast.target_block,
                             Block::default(),
@@ -158,7 +147,7 @@ impl<G: WorldGenerator> World<G> {
                     }
                     if let ItemType::Block(block) = self.player_object.get_hand_item().item_type {
                         if input_state.is_mouse_just_pressed(MouseButton::Right) {
-                            self.physics_engine
+                            self.physics_world
                                 .set_block(idx, phys_raycast.previous_block, block);
                         }
                     }
@@ -176,12 +165,12 @@ impl<G: WorldGenerator> World<G> {
                 }
             } else {
                 if input_state.is_mouse_just_pressed(MouseButton::Left) {
-                    self.physics_engine
+                    self.physics_world
                         .set_block(idx, phys_raycast.target_block, Block::default());
                 }
                 if let ItemType::Block(block) = self.player_object.get_hand_item().item_type {
                     if input_state.is_mouse_just_pressed(MouseButton::Right) {
-                        self.physics_engine
+                        self.physics_world
                             .set_block(idx, phys_raycast.previous_block, block);
                     }
                 }
@@ -209,7 +198,7 @@ impl<G: WorldGenerator> World<G> {
 
         self.overworld.update_chunk_meshes(renderer);
         self.player_object.update_inventory_meshes(renderer);
-        self.physics_engine.update_meshes(renderer);
+        self.physics_world.update_meshes(renderer);
     }
 
     pub fn show_chunk(&mut self, chunk: ChunkCoords) {
@@ -292,6 +281,16 @@ impl<G: WorldGenerator> World<G> {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+pub fn process_cube<F: FnMut(ChunkCoords)>(mut function: F, center: Vector3<i32>, radius: i32) {
+    for y in (center.y - radius)..=(center.y + radius) {
+        for z in (center.z - radius)..=(center.z + radius) {
+            for x in (center.x - radius)..=(center.x + radius) {
+                function(ChunkCoords::new(x, y, z))
             }
         }
     }

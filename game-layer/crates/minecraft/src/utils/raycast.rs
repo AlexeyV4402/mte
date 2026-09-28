@@ -1,13 +1,9 @@
 use glam::Vec3;
-use lib_core::math::vectors::Vector;
 use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::core::Vector3;
 
-use crate::phys_engine::PhysicsConstruction;
-use crate::types::blocks::block::Block;
-use crate::types::coordinates::core::{
-    ChunkCoords, Coords, CoordsTrait, Global, GlobalCoords, LocalCoords, MiniChunkCoords
-};
+use crate::physics_world::physics_construction::PhysicsConstruction;
+use crate::types::coordinates::core::{CoordsTrait, GlobalCoords, MiniChunkCoords};
 use crate::types::dimension::Dimension;
 
 pub struct RaycastResult<T: CoordsTrait> {

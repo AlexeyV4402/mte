@@ -45,6 +45,14 @@ impl<T> Vector3<T> {
     }
 
     #[inline(always)]
+    pub fn any_le<RHS>(self, other: RHS) -> bool
+    where
+        T: PartialOrd<RHS>,
+    {
+        self.x <= other || self.y <= other || self.z <= other
+    }
+
+    #[inline(always)]
     pub fn any_gt<RHS>(self, other: RHS) -> bool
     where
         T: PartialOrd<RHS>,

@@ -10,7 +10,7 @@ use crate::types::blocks::block::Block;
 use crate::types::chunk::Chunk;
 use crate::types::coordinates::core::{ChunkCoords, GlobalCoords, InternalCoords};
 use crate::utils::save_manager::{self, SaveManager};
-use crate::world_generator::WorldGenerator;
+use crate::utils::world_generator::WorldGenerator;
 
 pub struct Dimension {
     chunks: FxHashMap<ChunkCoords, Chunk>,
