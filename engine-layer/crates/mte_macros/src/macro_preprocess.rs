@@ -1,8 +1,6 @@
-use lib_core::fs::os::{get_workspace_dir, get_workspace_dir_from};
 use lib_core::fs::vfs::resolve::get_cache_path;
 use proc_macro::TokenStream;
-use syn::parse::{Parse, ParseStream};
-use syn::{Error, Expr, Fields, Ident, ItemEnum, Lit, LitBool, LitStr, Token, parse_macro_input};
+use syn::{LitStr, parse_macro_input};
 
 use crate::macro_core::resolve_path;
 

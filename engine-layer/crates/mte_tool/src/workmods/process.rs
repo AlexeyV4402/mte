@@ -10,14 +10,10 @@ use lib_core::fs::vfs::config::CompressionType;
 use lib_core::fs::vfs::resolve::{get_cache_path, primary_pack_resolve, resolve_path_checked};
 use lib_core::fs::vfs::types::PostBakeVfsEntry;
 use mte_macros::vpath;
-use naga::back::spv;
-use naga::front::glsl;
-use naga::{FastHashMap, valid};
 
-use crate::process_assets::images::process_png_jpg;
 use crate::process_assets::shaders;
 use crate::rs_parser::syn_parser::run_syn_parser;
-use crate::types::{FileFormatDefine, PreResolveAssetData};
+use crate::types::PreResolveAssetData;
 use crate::utils::{detect_file_format_by_signature, get_rs_files};
 
 const VALID_SHADER_PURPOSES: &[&str] = &["vertex", "fragment", "compute"];
@@ -88,7 +84,7 @@ fn process_asset(os_path: &Path, compression: &CompressionType) -> Result<Vec<u8
     Ok(output_content)
 }
 
-pub fn process(args: &[String], release: bool) -> Result<(), String> {
+pub fn process(args: &[String], _release: bool) -> Result<(), String> {
     let mut file_option: Option<PathBuf> = None;
 
     for argument in args.iter().skip(2) {
@@ -109,7 +105,7 @@ pub fn process(args: &[String], release: bool) -> Result<(), String> {
     let out = run_syn_parser(files_to_scan);
 
     let mut parser_type_groups: [HashMap<PathBuf, Vec<PreResolveAssetData>>; 2] =
-        array::from_fn(|idx| HashMap::new());
+        array::from_fn(|_idx| HashMap::new());
 
     for asset in out {
         parser_type_groups[asset.resolver_type as usize]

@@ -12,8 +12,6 @@ lib_core = {workspace = true}
 lib_ecs = {workspace = true}
 lib_renderer = {workspace = true}
 
-game_lib = {workspace = true}
-
 anyhow = {workspace = true}
 glam = {workspace = true}
 renet = {workspace = true}

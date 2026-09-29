@@ -75,6 +75,7 @@ impl<S, N> From<Vector3<N>> for Coords<S, N> {
     }
 }
 
+#[allow(unused)]
 pub trait PrecisePositionC32Coords {
     fn get_chunk(&self) -> ChunkCoords;
     fn get_local(&self) -> LocalCoords;

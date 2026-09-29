@@ -1,8 +1,8 @@
-use glam::{IVec3, Vec3};
+use glam::Vec3;
 use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::core::Vector3;
 
-use crate::types::coordinates::core::{ChunkCoords, GlobalCoords, GlobalCoordsType, LocalCoords};
+use crate::types::coordinates::core::{ChunkCoords, GlobalCoords, LocalCoords};
 use crate::types::dimension::Dimension;
 
 pub struct PhysicsBody {

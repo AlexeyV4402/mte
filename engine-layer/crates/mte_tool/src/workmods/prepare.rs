@@ -1,6 +1,5 @@
-use std::borrow::Cow;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use lib_core::fs::os::{get_crate_dir_from, get_files_recursively};
 use lib_core::fs::vfs::builder::init_builder_state;
@@ -17,7 +16,7 @@ pub enum AssetCategory {
     Unknown,
 }
 
-pub fn prepare(args: &[String], release: bool) -> Result<(), String> {
+pub fn prepare(args: &[String], _release: bool) -> Result<(), String> {
     let mut file_option: Option<PathBuf> = None;
 
     // println!("{:#?}", args);

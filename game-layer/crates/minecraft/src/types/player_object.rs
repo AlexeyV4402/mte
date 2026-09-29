@@ -1,5 +1,5 @@
 use std::mem::transmute;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use glam::{Mat4, Vec3};
 use lib_core::math::vectors::custom::PrecisePositionC32;
@@ -57,7 +57,7 @@ impl PlayerObject {
         input_state: &InputState,
         dt: Duration,
         dimension: &mut Dimension,
-        event_queue: &mut Vec<PhysicsEvent>,
+        _event_queue: &mut Vec<PhysicsEvent>,
     ) {
         self.camera.update(input_state, dt);
         let dt = dt.as_secs_f32();
@@ -103,7 +103,7 @@ impl PlayerObject {
                     )
                 })
             }
-            ItemType::Item(true_item) => todo!(),
+            ItemType::Item(_true_item) => todo!(),
         }
 
         // // Теперь двигаем тело и разрешаем коллизии

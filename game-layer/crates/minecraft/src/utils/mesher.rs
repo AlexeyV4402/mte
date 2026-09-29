@@ -365,13 +365,19 @@ impl BitRow for u8 {
         if *self == 0 {
             return None;
         }
+
         let start = self.trailing_zeros();
-        // Находим длину линии единиц
-        let inverted = !*self >> start;
-        let len = inverted.trailing_zeros();
-        // Стираем обработанные биты
-        *self &= !(((1 << len) - 1) << start);
-        Some((start, len))
+        let length = (*self >> start).trailing_ones();
+
+        let mask_to_clear = if length == 8 {
+            u8::MAX
+        } else {
+            ((1u8 << length) - 1u8) << start
+        };
+
+        *self &= !mask_to_clear;
+
+        Some((start, length))
     }
 }
 
@@ -400,8 +406,7 @@ impl BitRow for u64 {
         let start = self.trailing_zeros();
         let length = (*self >> start).trailing_ones();
 
-        // Защита от неопределенного поведения (Undefined Behavior) при сдвиге на 64 бита.
-        // Если length == 64, сдвиг 1u64 << 64 в Rust вызовет панику или выдаст мусор.
+        // БЕЗОПАСНАЯ МАСКА ОЧИСТКИ:
         let mask_to_clear = if length == 64 {
             u64::MAX
         } else {

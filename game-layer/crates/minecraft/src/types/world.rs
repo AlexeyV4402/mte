@@ -75,7 +75,7 @@ impl<G: WorldGenerator> World<G> {
                 self.overworld.show_chunk(coords);
             },
             player_start_chunk,
-            self.storage_radius,
+            self.render_radius,
         );
     }
 
@@ -92,15 +92,15 @@ impl<G: WorldGenerator> World<G> {
     }
 
     fn update_player_chunk(&mut self) {
-        let player_chunk = self.player_object.get_position().chunk;
-        if player_chunk != self.prev_player_chunk {
-            self.update_chunks_state(player_chunk);
-            let player_region = ChunkCoords::from(self.prev_player_chunk).get_region();
-            if ChunkCoords::from(player_chunk).get_region() != player_region {
-                self.overworld_save_manager.shift_center(player_region);
+        let new_player_chunk = self.player_object.get_position().chunk;
+        if new_player_chunk != self.prev_player_chunk {
+            self.update_chunks_state(new_player_chunk);
+            let prev_player_region = ChunkCoords::from(self.prev_player_chunk).get_region();
+            if ChunkCoords::from(new_player_chunk).get_region() != prev_player_region {
+                self.overworld_save_manager.shift_center(prev_player_region);
             }
         }
-        self.prev_player_chunk = player_chunk;
+        self.prev_player_chunk = new_player_chunk;
     }
 
     pub fn handle_debug_input(&mut self, input_state: &InputState) {

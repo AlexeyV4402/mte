@@ -52,10 +52,6 @@ pub fn load_glb_as_monolith(glb_bytes: &[u8]) -> Result<MonolithAsset, String> {
     })
 }
 
-use meshopt::{
-    generate_vertex_remap, optimize_vertex_fetch, remap_index_buffer, remap_vertex_buffer
-};
-
 pub struct OptimizedAsset {
     pub vertices: Vec<f32>,
     pub indices: Vec<u32>,
@@ -188,7 +184,7 @@ pub fn process_glb_to_pack(glb_bytes: &[u8]) -> Result<(), String> {
 
         // Передаем сырые байты в вашу функцию process_png_jpg, которую мы писали ранее.
         // На выходе получаем KTX2/DDS с BC7 сжатием.
-        let ktx2_bytes = process_png_jpg(&raw_rgba_bytes)?;
+        let _ktx2_bytes = process_png_jpg(&raw_rgba_bytes)?;
 
         // !!! КРИТИЧЕСКИ ВАЖНО !!!
         // Узнаем, до каких размеров ctt молча расширил картинку (например, 498 -> 500)
@@ -211,7 +207,7 @@ pub fn process_glb_to_pack(glb_bytes: &[u8]) -> Result<(), String> {
     for mesh in gltf.meshes() {
         for primitive in mesh.primitives() {
             // Читаем индексы примитива
-            let reader = primitive.reader(|buffer| Some(blob));
+            let reader = primitive.reader(|_buffer| Some(blob));
 
             let mut indices: Vec<u32> = if let Some(indices_reader) = reader.read_indices() {
                 indices_reader.into_u32().collect()
@@ -282,7 +278,7 @@ pub fn process_glb_to_pack(glb_bytes: &[u8]) -> Result<(), String> {
             // meshoptimizer::optimize_overdraw_in_place(...);
 
             // 3. Переупорядочиваем буфер вершин в соответствии с оптимизированными индексами
-            let optimized_vertices: Vec<PackedVertex> =
+            let _optimized_vertices: Vec<PackedVertex> =
                 meshopt::optimize_vertex_fetch(&mut indices, &vertices);
 
             // ==========================================

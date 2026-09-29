@@ -130,6 +130,7 @@ pub fn define_blocks_impl(input: TokenStream) -> TokenStream {
         pub const REGISTERED_BLOCKS_COUNT: usize = #current_block_id;
         pub const REGISTERED_TEXTURES_COUNT: u32 = #current_texture_index;
 
+        #[allow(unused)]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         #[repr(u16)]
         pub enum BlockType {

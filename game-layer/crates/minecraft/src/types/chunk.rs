@@ -1,13 +1,10 @@
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::ChunkGpuHandle;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
-use lib_renderer::renderer::block_grid_renderer::types::BlockVertex;
 use serde::{Deserialize, Serialize};
 
-use crate::types::blocks::block::{Block, BlockType};
+use crate::types::blocks::block::Block;
 use crate::types::coordinates::core::{InternalCoords, LocalCoords};
-use crate::utils::mesher::{
-    WorldChunk32, generate_mesh_34, generate_mesh_generic, into_prerender_array
-};
+use crate::utils::mesher::{WorldChunk32, generate_mesh_generic, into_prerender_array};
 
 pub type ChunkAssociatedType = u32;
 pub const CHUNK_SIZE: u32 = 32;

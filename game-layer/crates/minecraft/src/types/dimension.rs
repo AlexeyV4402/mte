@@ -1,5 +1,4 @@
-use std::time::Instant;
-use std::{array, mem};
+use std::mem;
 
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
@@ -9,7 +8,7 @@ use rustc_hash::FxHashMap;
 use crate::types::blocks::block::Block;
 use crate::types::chunk::Chunk;
 use crate::types::coordinates::core::{ChunkCoords, GlobalCoords, InternalCoords};
-use crate::utils::save_manager::{self, SaveManager};
+use crate::utils::save_manager::SaveManager;
 use crate::utils::world_generator::WorldGenerator;
 
 pub struct Dimension {

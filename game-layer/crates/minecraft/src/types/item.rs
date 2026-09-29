@@ -82,7 +82,7 @@ impl ItemType {
 
                 BlockIndexedPrimitive::new(vertices, indices)
             }
-            ItemType::Item(true_item) => todo!(),
+            ItemType::Item(_true_item) => todo!(),
         }
     }
 }

@@ -1,3 +1,4 @@
+#[allow(unused)]
 #[repr(u8)]
 pub enum Shape {
     None,
@@ -6,6 +7,7 @@ pub enum Shape {
     Full,
 }
 
+#[allow(unused)]
 #[repr(u8)]
 pub enum TextureMappingProfile {
     AllSides = 0,       // 1 текстура: абсолютно одинаковая со всех 6 сторон (камень, земля).
@@ -16,6 +18,7 @@ pub enum TextureMappingProfile {
     Individual = 5, // 6 текстур: каждая грань имеет уникальную текстуру.
 }
 
+#[allow(unused)]
 #[repr(u8)]
 pub enum Facing {
     Up,
@@ -26,6 +29,7 @@ pub enum Facing {
     East,
 }
 
+#[allow(unused)]
 #[repr(u8)]
 pub enum StairFacing {
     VoidTopNorth,

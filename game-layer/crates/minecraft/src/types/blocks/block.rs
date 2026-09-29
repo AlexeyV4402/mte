@@ -52,6 +52,7 @@ pub const CUBE_LINES: [[f32; 3]; 24] = [
 #[derive(Default, Clone, Copy)]
 pub struct PrerenderBlock(u32);
 
+#[allow(unused)]
 impl PrerenderBlock {
     pub fn as_u32(self) -> u32 {
         unsafe { std::mem::transmute::<Self, u32>(self) }
@@ -81,6 +82,7 @@ impl PrerenderBlock {
 #[derive(Clone, Copy, Default)]
 pub struct Block(u16);
 
+#[allow(unused)]
 impl Block {
     pub fn as_u16(self) -> u16 {
         unsafe { std::mem::transmute::<Self, u16>(self) }

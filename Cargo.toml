@@ -6,8 +6,7 @@ lib_io = {package = "mte_lib_io", path = "lib-layer/crates/mte_lib_io"}
 lib_physics = {package = "mte_lib_physics", path = "lib-layer/crates/mte_lib_physics"}
 lib_renderer = {package = "mte_lib_renderer", path = "lib-layer/crates/mte_lib_renderer"}
 lib_audio = {package = "mte_lib_audio", path = "lib-layer/crates/mte_lib_audio"}
-
-game_lib = {path = "game-layer/crates/game_lib"}
+lib_math = {package = "mte_lib_math", path = "lib-layer/crates/mte_lib_math"}
 
 mte_macros = {path = "engine-layer/crates/mte_macros"}
 
@@ -71,12 +70,7 @@ naga = { version = "30.0.1", default-features = false, features = ["glsl-in", "s
 [workspace]
 members = [
     # --- GAME LAYER (Игровой функционал) ---
-    "game-layer/crates/client_app",
     "game-layer/crates/minecraft",
-    "game-layer/crates/game_server",
-    "game-layer/crates/data_server",
-    "game-layer/crates/game_lib",
-    "game-layer/crates/init",
 
     # --- ENGINE LAYER (Мета-функционал) ---
     "engine-layer/crates/mte_macros",
@@ -84,6 +78,7 @@ members = [
 
     # --- LIB LAYER (Общий функционал) ---
     "lib-layer/crates/mte_lib_core",
+    "lib-layer/crates/mte_lib_math",
     "lib-layer/crates/mte_lib_ecs",
     "lib-layer/crates/mte_lib_network",
     "lib-layer/crates/mte_lib_io",

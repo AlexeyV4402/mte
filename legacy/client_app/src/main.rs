@@ -1,9 +1,3 @@
-use std::io::stdin;
-
-use game_lib::ecs::{MeshHandle, Position, Velocity};
-use glam::{Vec2, Vec3};
-use mte_macros::vfs_read;
-
 mod config;
 mod network;
 
@@ -70,7 +64,7 @@ enum Block {
 fn main() {
     println!("{}", size_of::<Block>());
 
-    let chunk = [Block::Dirt; 32 * 32 * 32];
+    let _chunk = [Block::Dirt; 32 * 32 * 32];
 
     // lib_renderer::run::run().unwrap();
 
