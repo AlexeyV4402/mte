@@ -1,7 +1,7 @@
 use std::ffi::CString;
 use std::sync::OnceLock;
 
-use ash::{Device, Entry, ext, vk};
+use ash::{Device, ext, vk};
 
 pub static DEBUG_UTILS_DEVICE: OnceLock<ash::ext::debug_utils::Device> = OnceLock::new();
 

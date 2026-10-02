@@ -45,63 +45,6 @@ impl<const BLOCKS_64_COUNT: usize> ConstPageAllocHelper<BLOCKS_64_COUNT> {
         }
     }
 
-    // pub fn alloc(&mut self, needed_sectors: usize) -> usize {
-    //     let mut run_start = 0;
-    //     let mut run_len = 0;
-
-    //     for u64_idx in 0..self.bitset.len() {
-    //         let word = self.bitset[u64_idx];
-    //         let base_sector = u64_idx * 64;
-
-    //         if word == u64::MAX {
-    //             run_len = 0;
-    //             continue;
-    //         }
-
-    //         if word == 0 {
-    //             if run_len == 0 {
-    //                 run_start = base_sector;
-    //             }
-    //             run_len += 64;
-
-    //             if run_len >= needed_sectors {
-    //                 // println!("1");
-    //                 self.set_range(run_start, needed_sectors, true);
-    //                 return run_start;
-    //             }
-    //             continue;
-    //         }
-
-    //         let word_reversed = word.reverse_bits();
-    //         let mut bit_idx = 0;
-    //         while bit_idx < 64 {
-    //             let is_occupied = (word_reversed & (1u64 << bit_idx)) != 0;
-
-    //             let occupied = (word_reversed >> bit_idx).trailing_ones() as usize;
-
-    //             if is_occupied {
-    //                 run_len = 0;
-    //                 bit_idx += occupied.min(64 - bit_idx);
-    //             } else {
-    //                 if run_len == 0 {
-    //                     run_start = base_sector + bit_idx;
-    //                 }
-    //                 run_len += 1;
-
-    //                 if run_len >= needed_sectors {
-    //                     // println!("2");
-    //                     self.set_range(run_start, needed_sectors, true);
-    //                     return run_start;
-    //                 }
-    //                 bit_idx += 1;
-    //             }
-    //         }
-    //     }
-
-    //     // println!("3");
-    //     BLOCKS_64_COUNT * 64 + 1
-    // }
-
     pub fn alloc(&mut self, needed_sectors: usize) -> usize {
         let mut run_start = 0;
         let mut run_len = 0;

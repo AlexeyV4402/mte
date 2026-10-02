@@ -3,10 +3,8 @@ use std::ffi::CStr;
 
 use ash::vk::*;
 use ash::{Entry, vk};
-use mte_macros::vfs_include_bytes;
 use winit::dpi::PhysicalSize;
 
-use crate::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::IndirectBufferManager;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::find_memory_type;
 use crate::renderer::block_grid_renderer::types::BlockVertex;
 

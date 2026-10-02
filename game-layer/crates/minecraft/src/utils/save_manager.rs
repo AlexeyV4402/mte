@@ -110,7 +110,6 @@ impl SaveManager {
 
     pub fn load_exist(&self, mut chunks: Vec<ChunkCoords>) -> Vec<(ChunkCoords, Option<Chunk>)> {
         let mut sorted: FxHashMap<RegionCoords, Vec<ChunkCoords>> = Default::default();
-
         chunks.drain(..).for_each(|chunk| {
             let vec = sorted.entry(chunk.get_region()).or_insert(Vec::default());
             vec.push(chunk);
@@ -146,6 +145,7 @@ impl SaveManager {
                 for chunk_coords in chunks_vec {
                     let chunk_idx = usize::from(chunk_coords.in_region());
                     let chunk_header_data = cached_region.offsets[chunk_idx] as usize;
+                    // println!("Загрузка чанка: {:?}, chunk_idx: {}, header_data: {}", chunk_coords, chunk_idx, chunk_header_data);
 
                     if chunk_header_data == 0 {
                         local_results.push((chunk_coords, None));
@@ -302,7 +302,7 @@ impl SaveManager {
         }
 
         par_tasks
-            .into_par_iter()
+            .into_iter()
             .for_each(|(region_coords, chunks_vec, cached_region)| {
                 let save_dir: PathBuf = vpath!("data://");
                 let file_name = format!(

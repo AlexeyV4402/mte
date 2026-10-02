@@ -5,7 +5,7 @@ use ash::vk::*;
 use ash::{Entry, vk};
 use glam::Mat4;
 use mte_macros::vfs_include_vk_shader;
-use wgpu::rwh::{HasDisplayHandle, HasWindowHandle};
+use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::builder::{
     DepthBuffer, SyncObjects, VkBuilder, create_command_pool, create_sync
@@ -165,6 +165,7 @@ impl VkBackend {
 
         let features = PhysicalDeviceFeatures::default()
             .multi_draw_indirect(true)
+            .sampler_anisotropy(true)
             .fill_mode_non_solid(true);
 
         let device_info = DeviceCreateInfo::default()
@@ -248,7 +249,7 @@ impl VkBackend {
             MemoryPropertyFlags::HOST_VISIBLE | MemoryPropertyFlags::HOST_COHERENT,
         );
 
-        let static_data = StaticData::new(
+        let mut static_data = StaticData::new(
             &device,
             &memory_prop,
             renderer_create_args.block_properties.len(),
@@ -300,17 +301,15 @@ impl VkBackend {
         );
 
         unsafe {
-            StaticData::upload(
+            static_data.upload(
                 &device,
                 main_graphics_queue,
                 cmd_pool,
                 &mut buffer_manager,
-                static_data.block_properties_buffer.buffer,
-                static_data.texture_array.image,
                 renderer_create_args.block_properties,
                 16,
                 renderer_create_args.layer_count,
-            )
+            );
         };
 
         Self {

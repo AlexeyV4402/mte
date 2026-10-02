@@ -1,4 +1,4 @@
-use ash::vk;
+use ash::vk::{self, CommandBuffer};
 use mte_macros::vfs_include_bytes;
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::builder::{
@@ -21,6 +21,7 @@ impl StaticData {
         block_properties_len: usize,
         layer_count: u32,
     ) -> Self {
+        let mip_levels = 5;
         let block_props_size =
             (std::mem::size_of::<u64>() * block_properties_len) as vk::DeviceSize;
 
@@ -42,6 +43,30 @@ impl StaticData {
             .address_mode_w(vk::SamplerAddressMode::REPEAT)
             .min_lod(0.0)
             .max_lod(32.0);
+
+        // .mag_filter(vk::Filter::NEAREST) // Храним четкие пиксели пиксель-арта вблизи
+        // .min_filter(vk::Filter::LINEAR) // Сглаживаем текстуру на расстоянии
+        // .mipmap_mode(vk::SamplerMipmapMode::LINEAR) // Плавный переход между мип-уровнями (Трилинейная фильтрация)
+        // .min_lod(0.0)
+        // .max_lod(mip_levels as f32)
+        // .mip_lod_bias(0.0)
+        // .anisotropy_enable(true)
+        // .max_anisotropy(16.0);
+        // .mag_filter(vk::Filter::NEAREST) // Четкие пиксели вблизи
+        // .min_filter(vk::Filter::LINEAR) // Сглаживание вдалеке
+        // .address_mode_u(vk::SamplerAddressMode::REPEAT)
+        // .address_mode_v(vk::SamplerAddressMode::REPEAT)
+        // .address_mode_w(vk::SamplerAddressMode::REPEAT)
+        // .anisotropy_enable(true) // Включаем (фича выше должна быть активна)
+        // .max_anisotropy(16.0) // Максимальное сглаживание углов
+        // .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+        // .unnormalized_coordinates(false)
+        // .compare_enable(false)
+        // .compare_op(vk::CompareOp::ALWAYS)
+        // .mipmap_mode(vk::SamplerMipmapMode::LINEAR) // Плавный переход между мип-уровнями
+        // .min_lod(0.0)
+        // .max_lod(mip_levels as f32) // Диапазон мип-уровней сэмплера
+        // .mip_lod_bias(0.0);
 
         let block_sampler = unsafe { device.create_sampler(&block_sampler_info, None).unwrap() };
 
@@ -103,16 +128,18 @@ impl StaticData {
     }
 
     pub unsafe fn upload(
+        &mut self,
         device: &ash::Device,
         graphics_queue: vk::Queue,
         command_pool: vk::CommandPool,
         buffer_manager: &mut IndirectBufferManager, // Твой менеджер буферов
-        dst_block_properties_buffer: vk::Buffer,    // Целевой буфер свойств блоков на GPU
-        dst_texture_image: vk::Image,               // Целевая текстура на GPU
         block_properties_data: &[u8],               // Массив свойств блоков из Rust
         texture_resolution: u32,                    // Например, 16
         layer_count: u32,
     ) {
+        let dst_block_properties_buffer = self.block_properties_buffer.buffer; // Целевой буфер свойств блоков на GPU
+        let dst_texture_image = self.texture_array.image;
+
         let image_bytes =
             vfs_include_bytes!("workspace://game-layer/crates/minecraft/content/000001");
 
@@ -243,6 +270,8 @@ impl StaticData {
             )
         };
 
+        // Self::generate_mipmaps_runtime(device, layer_count, &cmd, self.texture_array.image);
+
         // Переводим текстуру в финальный лейаут SHADER_READ_ONLY_OPTIMAL для чтения во фрагментном шейдере
         let barrier_to_shader = vk::ImageMemoryBarrier::default()
             .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
@@ -293,7 +322,153 @@ impl StaticData {
             device.free_command_buffers(command_pool, &[cmd[0]]);
         }
 
-        // Очищаем стейджинг буфер на CPU, он готов к работе с чанками в игровом цикле
+        // Очищаем стейджинг буфер на CPU
         buffer_manager.cpu_staging_buffer.clear();
+    }
+
+    fn generate_mipmaps_runtime(
+        device: &ash::Device,
+        layer_count: u32,
+        cmd: &[CommandBuffer],
+        texture_image: vk::Image,
+    ) {
+        let mip_levels = 5;
+        let tex_width = 16;
+        let tex_height = 16;
+
+        unsafe {
+            let make_barrier = |mip_level: u32,
+                                old_layout: vk::ImageLayout,
+                                new_layout: vk::ImageLayout,
+                                src_access: vk::AccessFlags,
+                                dst_access: vk::AccessFlags| {
+                vk::ImageMemoryBarrier::default()
+                    .old_layout(old_layout)
+                    .new_layout(new_layout)
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .image(texture_image)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: mip_level,
+                        level_count: 1, // Меняем строго ОДИН уровень за раз
+                        base_array_layer: 0,
+                        layer_count, // Но для ВСЕХ слоев массива текстур разом
+                    })
+                    .src_access_mask(src_access)
+                    .dst_access_mask(dst_access)
+            };
+
+            let mut m_width = tex_width as i32;
+            let mut m_height = tex_height as i32;
+
+            for i in 1..mip_levels {
+                // --- БАРЬЕР 1: Переводим предыдущий уровень (i - 1) из DST в SRC ---
+                // Ждем, пока в него запишутся данные (либо из staging, либо с предыдущего шага блита)
+                let barrier_src = make_barrier(
+                    i - 1,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::AccessFlags::TRANSFER_READ,
+                );
+
+                device.cmd_pipeline_barrier(
+                    cmd[0],
+                    vk::PipelineStageFlags::TRANSFER, // Из стадии трансфера
+                    vk::PipelineStageFlags::TRANSFER, // В стадию трансфера
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[barrier_src],
+                );
+
+                // --- ВЫЗОВ BLIT ---
+                // Вычисляем размеры следующего мип-уровня
+                let next_width = if m_width > 1 { m_width / 2 } else { 1 };
+                let next_height = if m_height > 1 { m_height / 2 } else { 1 };
+
+                let blit = vk::ImageBlit::default()
+                    .src_offsets([
+                        vk::Offset3D { x: 0, y: 0, z: 0 },
+                        vk::Offset3D {
+                            x: m_width,
+                            y: m_height,
+                            z: 1,
+                        },
+                    ])
+                    .src_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: i - 1,
+                        base_array_layer: 0,
+                        layer_count,
+                    })
+                    .dst_offsets([
+                        vk::Offset3D { x: 0, y: 0, z: 0 },
+                        vk::Offset3D {
+                            x: next_width,
+                            y: next_height,
+                            z: 1,
+                        },
+                    ])
+                    .dst_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: i,
+                        base_array_layer: 0,
+                        layer_count,
+                    });
+
+                device.cmd_blit_image(
+                    cmd[0],
+                    texture_image,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    texture_image,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &[blit],
+                    vk::Filter::LINEAR,
+                );
+
+                // --- БАРЬЕР 2: Переводим отработавший уровень (i - 1) в состояние чтения фрагментным шейдером ---
+                let barrier_shader = make_barrier(
+                    i - 1,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    vk::AccessFlags::TRANSFER_READ,
+                    vk::AccessFlags::SHADER_READ,
+                );
+
+                device.cmd_pipeline_barrier(
+                    cmd[0],
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER, // Теперь доступно во фрагментном шейдере
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[barrier_shader],
+                );
+
+                m_width = next_width;
+                m_height = next_height;
+            }
+
+            // --- БАРЬЕР 3: Переводим самый ПОСЛЕДНИЙ мип-уровень (у него старый layout все еще DST) ---
+            let last_barrier = make_barrier(
+                mip_levels - 1,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::AccessFlags::TRANSFER_WRITE,
+                vk::AccessFlags::SHADER_READ,
+            );
+
+            device.cmd_pipeline_barrier(
+                cmd[0],
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[last_barrier],
+            );
+        }
     }
 }

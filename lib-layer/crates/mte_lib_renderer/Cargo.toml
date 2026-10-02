@@ -10,7 +10,7 @@ mte_macros = {workspace = true}
 
 anyhow = {workspace = true}
 winit = {workspace = true}
-wgpu = {workspace = true}
+#wgpu = {workspace = true}
 chrono = {workspace = true}
 pollster = {workspace = true}
 glam = {workspace = true}

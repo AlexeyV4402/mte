@@ -1,14 +1,9 @@
 use ash::vk::*;
 use ash::{Entry, vk};
 use lib_core::alloc_helper::ConstPageAllocHelper;
-use mte_macros::vfs_include_vk_shader;
-use wgpu::rwh::{HasDisplayHandle, HasWindowHandle};
 use winit::dpi::PhysicalSize;
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::VkBufferDataDL;
-use crate::renderer::block_grid_renderer::consts::{
-    GLOBAL_INDEX_BUFFER_CAPACITY, GLOBAL_VERTEX_BUFFER_CAPACITY
-};
 use crate::renderer::block_grid_renderer::types::BlockVertex;
 
 #[derive(Clone, Copy, Debug)]

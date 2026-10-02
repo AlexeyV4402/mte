@@ -120,6 +120,7 @@ impl<G: WorldGenerator> World<G> {
             self.unload_chunk(chunk_coords);
             self.overworld.save_chunks(&mut self.overworld_save_manager);
             self.prepare_chunk(chunk_coords);
+            println!("Перезагрузка чанка");
         }
     }
 
