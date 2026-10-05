@@ -1,4 +1,4 @@
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::ChunkGpuHandle;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::types::game_buffer_manager::ChunkGpuHandle;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use serde::{Deserialize, Serialize};
 

@@ -11,12 +11,12 @@ use crate::renderer::block_grid_renderer::backend::vulkan_backend::builder::{
     DepthBuffer, SyncObjects, VkBuilder, create_command_pool, create_sync
 };
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::debug::init_debug_utils;
-use crate::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::{
-    ChunkGpuHandle, HandGpuHandle, IndirectBufferManager, PhysObjectGpuHandle
-};
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::VkBufferDataHV;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::descriptors::Descriptors;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::framebuffer_object::FramebufferObject;
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::game_buffer_manager::{
+    ChunkGpuHandle, GameBufferManager, HandGpuHandle, PhysObjectGpuHandle
+};
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::static_data::StaticData;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::swapchain_object::SwapchainObject;
 use crate::renderer::block_grid_renderer::render_objects::camera::WorldCameraUniform;
@@ -59,7 +59,7 @@ pub struct VkBackend {
     pub image_index: u32, // Индекс текущей картинки свопчейна, полученный в методе frame()
 
     // --- НАШ МЕНЕДЖЕР БУФЕРОВ ---
-    pub buffer_manager: IndirectBufferManager,
+    pub buffer_manager: GameBufferManager,
 
     // Буфер для камеры на GPU (HOST_VISIBLE | HOST_COHERENT) и замаппленный указатель на него
     pub camera_buffer: VkBufferDataHV,
@@ -254,7 +254,7 @@ impl VkBackend {
         let phys_objects_frag_shader_module =
             VkBuilder::create_shader_module(&device, phys_objects_frag);
 
-        let mut buffer_manager = IndirectBufferManager::new(&device, &memory_prop);
+        let mut buffer_manager = GameBufferManager::new(&device, &memory_prop);
 
         let camera_buffer = VkBufferDataHV::new(
             &device,

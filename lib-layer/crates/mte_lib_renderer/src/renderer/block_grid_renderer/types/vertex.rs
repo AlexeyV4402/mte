@@ -24,7 +24,7 @@ impl BlockVertex {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GuiVertex {
     pub screen_pos: [f32; 2],
-    pub uv: [f32; 2],
+    // pub uv: [f32; 2],
     pub color: [f32; 4],
 }
 

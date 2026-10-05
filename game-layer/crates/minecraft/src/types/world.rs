@@ -4,7 +4,7 @@ use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::core::Vector3;
 use lib_core::math::vectors::vec3::types::{Vec3f32, Vec3i32};
 use lib_io::user_io::InputState;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::camera::RotatableCamera;
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;

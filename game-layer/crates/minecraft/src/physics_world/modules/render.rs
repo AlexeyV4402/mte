@@ -1,7 +1,7 @@
 use std::mem;
 
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::PhysObjectGpuHandle;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::types::game_buffer_manager::PhysObjectGpuHandle;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkBackend;
 
 use crate::physics_world::components::Components;
 

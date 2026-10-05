@@ -5,8 +5,8 @@ use glam::{Mat4, Vec3};
 use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::core::Vector3;
 use lib_io::user_io::InputState;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::HandGpuHandle;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::types::game_buffer_manager::HandGpuHandle;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::camera::{
     RotatableCamera, WorldCameraUniform
 };

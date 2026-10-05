@@ -4,8 +4,8 @@ use mte_macros::vfs_include_bytes;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::builder::{
     TextureArrayImage, VkBuilder
 };
-use crate::renderer::block_grid_renderer::backend::vulkan_backend::indirect_buffer_manager::IndirectBufferManager;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::VkBufferDataDL;
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::game_buffer_manager::GameBufferManager;
 
 pub struct StaticData {
     pub block_properties_buffer: VkBufferDataDL,
@@ -132,9 +132,9 @@ impl StaticData {
         device: &ash::Device,
         graphics_queue: vk::Queue,
         command_pool: vk::CommandPool,
-        buffer_manager: &mut IndirectBufferManager, // Твой менеджер буферов
-        block_properties_data: &[u8],               // Массив свойств блоков из Rust
-        texture_resolution: u32,                    // Например, 16
+        buffer_manager: &mut GameBufferManager, // Твой менеджер буферов
+        block_properties_data: &[u8],           // Массив свойств блоков из Rust
+        texture_resolution: u32,                // Например, 16
         layer_count: u32,
     ) {
         let dst_block_properties_buffer = self.block_properties_buffer.buffer; // Целевой буфер свойств блоков на GPU

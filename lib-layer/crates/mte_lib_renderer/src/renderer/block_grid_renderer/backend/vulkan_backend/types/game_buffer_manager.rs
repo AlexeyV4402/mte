@@ -1,14 +1,10 @@
-use std::mem;
-
 use ash::vk;
 use ash::vk::*;
 
-use crate::renderer::block_grid_renderer::backend::vulkan_backend::debug::VulkanNameable;
-use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_manager::{
-    RenderAllocData, RenderBufferManager, SlotAllocData, SlotBufferManager
-};
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_manager::render_buffer_manager::{RenderAllocData, RenderBufferManager};
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_manager::slot_buffer_manager::{SlotAllocData, SlotBufferManager};
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::{
-    VkBufferDataDL, VkBufferDataHV
+    VkBufferDataHV
 };
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::descriptors::Descriptors;
 use crate::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
@@ -21,7 +17,7 @@ pub struct StagingBufferCommand {
     pub dst: vk::Buffer,
 }
 
-pub struct IndirectBufferManager {
+pub struct GameBufferManager {
     pub gpu_staging_buffer: VkBufferDataHV,
     pub cpu_staging_buffer: Vec<u8>,
 
@@ -40,7 +36,7 @@ pub struct IndirectBufferManager {
     >,
 }
 
-impl IndirectBufferManager {
+impl GameBufferManager {
     pub const ONE_VERTEX_BUFFER_PAGE_CAPACITY: u64 = 4 * 1024;
     pub const ONE_VERTEX_BUFFER_PAGE_COUNT: u64 = 64 * 256;
     pub const ONE_VERTEX_BUFFER_CAPACITY: u64 =

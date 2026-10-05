@@ -8,7 +8,7 @@ use std::time::Duration;
 use glam::{Mat3, Vec3};
 use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::core::Vector3;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkBackend;
 
 use crate::physics_world::components::Components;
 use crate::physics_world::modules::integrate::IntegrateModule;

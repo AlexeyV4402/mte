@@ -2,5 +2,7 @@ pub mod buffer_manager;
 pub mod buffer_vk;
 pub mod descriptors;
 pub mod framebuffer_object;
+pub mod game_buffer_manager;
+pub mod gui_buffer_manager;
 pub mod static_data;
 pub mod swapchain_object;

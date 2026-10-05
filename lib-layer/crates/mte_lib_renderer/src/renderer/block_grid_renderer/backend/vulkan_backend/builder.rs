@@ -7,6 +7,7 @@ use winit::dpi::PhysicalSize;
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::find_memory_type;
 use crate::renderer::block_grid_renderer::types::BlockVertex;
+use crate::renderer::block_grid_renderer::types::vertex::GuiVertex;
 
 pub struct VkBuilder {}
 
@@ -187,6 +188,122 @@ impl VkBuilder {
             .depth_test_enable(true)
             .depth_write_enable(true)
             .depth_compare_op(vk::CompareOp::LESS);
+
+        let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
+            .stages(&shader_stages)
+            .vertex_input_state(&vertex_input_info)
+            .input_assembly_state(&input_assembly_info)
+            .viewport_state(&viewport_info)
+            .rasterization_state(&rasterization_info)
+            .multisample_state(&multisample_info)
+            .color_blend_state(&color_blend_info)
+            .dynamic_state(&dynamic_info)
+            .depth_stencil_state(&depth_stencil_info)
+            .layout(pipeline_layout)
+            .render_pass(render_pass)
+            .subpass(0);
+
+        unsafe {
+            let pipelines = device
+                .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
+                .expect("Не удалось скомпилировать графический конвейер");
+            pipelines[0]
+        }
+    }
+
+    pub fn create_graphics_gui_pipeline(
+        device: &ash::Device,
+        pipeline_layout: vk::PipelineLayout,
+        render_pass: vk::RenderPass,
+        vert_module: vk::ShaderModule,
+        frag_module: vk::ShaderModule,
+    ) -> vk::Pipeline {
+        let vertex_bindings = [vk::VertexInputBindingDescription::default()
+            .binding(0)
+            // 1. Указываем размер одной вершиныGuiVertex в байтах
+            .stride(std::mem::size_of::<GuiVertex>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX)];
+
+        let vertex_attributes = [
+            // 2. Атрибут для screen_pos (location = 0)
+            vk::VertexInputAttributeDescription::default()
+                .binding(0)
+                .location(0)
+                // Формат: два 32-битных float (vec2 в шейдере)
+                .format(vk::Format::R32G32_SFLOAT)
+                // Начинается с самого начала структуры (смещение 0 байт)
+                .offset(0),
+            // 3. Атрибут для color (location = 1)
+            vk::VertexInputAttributeDescription::default()
+                .binding(0)
+                .location(1)
+                // Формат: четыре 32-битных float (vec4 в шейдере)
+                .format(vk::Format::R32G32B32A32_SFLOAT)
+                // Смещение: идет сразу после screen_pos (2 float * 4 байта = 8 байт)
+                .offset(std::mem::offset_of!(GuiVertex, color) as u32), // Нужен макрос из std, либо просто написать 8
+        ];
+
+        let main_entry = std::ffi::CStr::from_bytes_with_nul(b"main\0").unwrap();
+
+        let shader_stages = [
+            vk::PipelineShaderStageCreateInfo::default()
+                .stage(vk::ShaderStageFlags::VERTEX)
+                .module(vert_module)
+                .name(main_entry),
+            vk::PipelineShaderStageCreateInfo::default()
+                .stage(vk::ShaderStageFlags::FRAGMENT)
+                .module(frag_module)
+                .name(main_entry),
+        ];
+
+        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::default()
+            .vertex_binding_descriptions(&vertex_bindings)
+            .vertex_attribute_descriptions(&vertex_attributes);
+
+        let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo::default()
+            .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .primitive_restart_enable(false);
+
+        // Вьюпорт динамический
+        let viewport_info = vk::PipelineViewportStateCreateInfo::default()
+            .viewport_count(1)
+            .scissor_count(1);
+
+        let rasterization_info = vk::PipelineRasterizationStateCreateInfo::default()
+            .polygon_mode(vk::PolygonMode::FILL)
+            // .polygon_mode(vk::PolygonMode::LINE)
+            .line_width(1.0)
+            .cull_mode(vk::CullModeFlags::BACK)
+            // .cull_mode(vk::CullModeFlags::NONE)
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
+            // .rasterizer_discard_enable(true)
+            .depth_bias_enable(false);
+
+        let multisample_info = vk::PipelineMultisampleStateCreateInfo::default()
+            .sample_shading_enable(false)
+            .rasterization_samples(vk::SampleCountFlags::TYPE_1);
+
+        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
+            .color_write_mask(vk::ColorComponentFlags::RGBA)
+            .blend_enable(true) // Включаем прозрачность для листвы/воды
+            .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+            .color_blend_op(vk::BlendOp::ADD)
+            .src_alpha_blend_factor(vk::BlendFactor::ONE)
+            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+            .alpha_blend_op(vk::BlendOp::ADD);
+
+        let color_blend_info = vk::PipelineColorBlendStateCreateInfo::default()
+            .attachments(std::slice::from_ref(&color_blend_attachment));
+
+        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_info =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+
+        let depth_stencil_info = vk::PipelineDepthStencilStateCreateInfo::default()
+            .depth_test_enable(true)
+            .depth_write_enable(true)
+            .depth_compare_op(vk::CompareOp::ALWAYS);
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&shader_stages)

@@ -1,6 +1,6 @@
 use std::mem;
 
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
