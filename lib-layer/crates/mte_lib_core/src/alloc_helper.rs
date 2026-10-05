@@ -1,3 +1,5 @@
+pub type Size = u64;
+
 pub struct ConstPageAllocHelper<const BLOCKS_64_COUNT: usize> {
     pub bitset: [u64; BLOCKS_64_COUNT],
 }
@@ -10,7 +12,27 @@ impl<const BLOCKS_64_COUNT: usize> Default for ConstPageAllocHelper<BLOCKS_64_CO
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct SectorAlloc<const SECTOR_SIZE: usize>(usize);
+
+impl<const SECTOR_SIZE: usize> SectorAlloc<SECTOR_SIZE> {
+    #[inline]
+    pub fn get_bytes_offset(self) -> usize {
+        self.0 * SECTOR_SIZE
+    }
+
+    pub fn get_sectors_offset(self) -> usize {
+        self.0
+    }
+}
+
 impl<const BLOCKS_64_COUNT: usize> ConstPageAllocHelper<BLOCKS_64_COUNT> {
+    pub const PAGE_COUNT: usize = BLOCKS_64_COUNT * 64;
+
+    pub const fn get_page_count(&self) -> usize {
+        Self::PAGE_COUNT
+    }
+
     pub fn free(&mut self, start_sector: usize, sectors_count: usize) {
         self.set_range(start_sector, sectors_count, false);
     }
@@ -45,7 +67,10 @@ impl<const BLOCKS_64_COUNT: usize> ConstPageAllocHelper<BLOCKS_64_COUNT> {
         }
     }
 
-    pub fn alloc(&mut self, needed_sectors: usize) -> usize {
+    pub fn alloc<const SECTOR_SIZE: usize>(
+        &mut self,
+        needed_sectors: usize,
+    ) -> SectorAlloc<SECTOR_SIZE> {
         let mut run_start = 0;
         let mut run_len = 0;
 
@@ -77,7 +102,7 @@ impl<const BLOCKS_64_COUNT: usize> ConstPageAllocHelper<BLOCKS_64_COUNT> {
                 // Если нашли цепочку нужной длины — занимаем её и возвращаем адрес!
                 if run_len >= needed_sectors {
                     self.set_range(run_start, needed_sectors, true);
-                    return run_start;
+                    return SectorAlloc(run_start);
                 }
 
                 // ОПТИМИЗАЦИЯ: Если мы попали на начало полностью пустого u64 слова,
@@ -90,7 +115,7 @@ impl<const BLOCKS_64_COUNT: usize> ConstPageAllocHelper<BLOCKS_64_COUNT> {
                     // Проверяем, вдруг нам хватало ровно 64 или меньше секторов
                     if run_len >= needed_sectors {
                         self.set_range(run_start, needed_sectors, true);
-                        return run_start;
+                        return SectorAlloc(run_start);
                     }
                     continue;
                 }
@@ -100,6 +125,6 @@ impl<const BLOCKS_64_COUNT: usize> ConstPageAllocHelper<BLOCKS_64_COUNT> {
         }
 
         // Если места не хватило (BLOCKS_64_COUNT * 64 + 1)
-        total_sectors + 1
+        SectorAlloc(total_sectors + 1)
     }
 }

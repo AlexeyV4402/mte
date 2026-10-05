@@ -35,6 +35,8 @@ pub struct World<G: WorldGenerator> {
     event_queue: Vec<PhysicsEvent>,
 }
 
+pub const BASE_RENDER_RADIUS: i32 = 1;
+
 impl<G: WorldGenerator> World<G> {
     pub fn new(seed: u32) -> Self {
         let player_coords =
@@ -48,8 +50,8 @@ impl<G: WorldGenerator> World<G> {
             overworld: Dimension::new(),
             overworld_generator: G::new(seed),
             prev_player_chunk: Vector3::new(0, 0, 0),
-            render_radius: 1,
-            storage_radius: 2,
+            render_radius: BASE_RENDER_RADIUS,
+            storage_radius: BASE_RENDER_RADIUS + 1,
             overworld_save_manager: SaveManager::new(
                 ChunkCoords::from(player_coords.chunk).get_region(),
             ),

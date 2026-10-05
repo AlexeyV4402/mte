@@ -29,8 +29,15 @@ pub fn process_glsl(input_content: Vec<u8>, ext: &String) -> Result<Vec<u8>, Str
         .validate(&module)
         .map_err(|e| format!("Шейдер не прошёл валидацию:\n{:?}", e))?;
 
-    let mut writer_options = spv::Options::default();
+    // let mut writer_options = spv::Options::default();
+    let mut writer_options = spv::Options {
+    lang_version: (1, 4), // Явно указываем SPIR-V 1.3 / Vulkan 1.1+
+    flags: spv::WriterFlags::LABEL_VARYINGS | spv::WriterFlags::FORCE_POINT_SIZE,
+    ..Default::default()
+};
     writer_options.flags = spv::WriterFlags::DEBUG;
+
+    // writer_options.lang_version = (1, 1);
 
     let spirv_words = spv::write_vec(&module, &module_info, &writer_options, None)
         .map_err(|e| format!("Ошибка генерации SPIR-V: {:?}", e))?;

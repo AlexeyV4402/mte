@@ -1,5 +1,10 @@
 #version 460
 
+#extension GL_ARB_shader_draw_parameters : enable
+
+//#extension GL_EXT_nonuniform_qualifier : enable
+//#extension GL_ARB_descriptor_indexing : enable
+
 const uint SIDE_TOP = 0u;
 const uint SIDE_BOTTOM = 1u;
 const uint SIDE_NORTH = 2u;
@@ -38,11 +43,11 @@ layout(set = 1, binding = 0, std140) uniform CameraUniform {
 
 layout(set = 2, binding = 0, std430) uniform Vectors {
     ivec4 vectors[256];
-};
+} vector_pools[1024];
 
 layout(set = 3, binding = 0, std430) uniform Matrices {
     mat4 matrices[256];
-};
+} matrix_pools[1024];
 
 // Глобальный массив смещений
 const uint MAPPING_OFFSETS[36] = uint[](
@@ -69,7 +74,19 @@ uint get_final_texture_layer(uint block_type, uint side_id) {
 }
 
 void main() {
-    uint instance_idx = gl_InstanceIndex; 
+    uint packed_vector_id = gl_InstanceIndex;
+    
+    uint vector_slot_offset = packed_vector_id & 0x0000FFFFu;
+    uint vector_buffer_idx = packed_vector_id >> 16u;
+
+    ivec4 chunk_pos_4d = vector_pools[vector_buffer_idx].vectors[vector_slot_offset];
+
+    uint packed_matrix_id = uint(chunk_pos_4d.w); 
+
+    uint matrix_slot_offset = packed_matrix_id & 0x0000FFFFu;
+    uint matrix_buffer_idx = packed_matrix_id >> 16u;
+
+    mat4 ship_rotation = matrix_pools[matrix_buffer_idx].matrices[matrix_slot_offset];
 
     float local_x = float(in_packed_data & 0x3Fu);
     float local_y = float((in_packed_data >> 6u) & 0x3Fu);
@@ -82,11 +99,7 @@ void main() {
     
     out_material_id = get_final_texture_layer(block_type_id, side_id);
 
-    ivec4 chunk_pos_4d = vectors[instance_idx];
-
-    uint matrix_idx = uint(chunk_pos_4d.w); 
-
-    mat4 ship_rotation = matrices[matrix_idx];
+    
 
 
     ivec3 chunk_diff_i32 = chunk_pos_4d.xyz - camera_uniform.camera_chunk.xyz;

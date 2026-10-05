@@ -163,6 +163,20 @@ impl VkBackend {
             queue_family_infos.push(device_queue_info)
         }
 
+        let mut draw_parameters_features =
+            vk::PhysicalDeviceShaderDrawParametersFeatures::default().shader_draw_parameters(true);
+
+        let mut descriptor_indexing_features =
+            vk::PhysicalDeviceDescriptorIndexingFeatures::default()
+                // Разрешает флаг UPDATE_AFTER_BIND для Uniform-буферов (твоих пулов UBO)
+                .descriptor_binding_uniform_buffer_update_after_bind(true)
+                // Разрешает менять дескрипторы после записи в командный буфер (очень полезно)
+                .descriptor_binding_partially_bound(true)
+                // Разрешает массивы переменной длины (наши [] или [1024] в Bindless)
+                .descriptor_binding_variable_descriptor_count(true);
+
+        draw_parameters_features.p_next = &mut descriptor_indexing_features as *mut _ as *mut _;
+
         let features = PhysicalDeviceFeatures::default()
             .multi_draw_indirect(true)
             .sampler_anisotropy(true)
@@ -171,7 +185,8 @@ impl VkBackend {
         let device_info = DeviceCreateInfo::default()
             .enabled_features(&features)
             .queue_create_infos(&queue_family_infos)
-            .enabled_extension_names(&phys_dev_required_extensions_ptrs);
+            .enabled_extension_names(&phys_dev_required_extensions_ptrs)
+            .push_next(&mut draw_parameters_features);
 
         let device = unsafe {
             instance
@@ -260,8 +275,12 @@ impl VkBackend {
             &device,
             &static_data,
             camera_buffer.buffer,
-            buffer_manager.vector_buffer.gpu_buffers[0].buffer,
-            buffer_manager.matrix_buffer.gpu_buffers[0].buffer,
+            buffer_manager.vector_buffer_manager.buffers[0]
+                .buffer
+                .buffer,
+            buffer_manager.matrix_buffer_manager.buffers[0]
+                .buffer
+                .buffer,
         );
 
         let chunks_pipeline_layout =
@@ -425,6 +444,8 @@ impl VkBackend {
             &self.device,
             &self.memory_prop,
             current_cmd,
+            &self.descriptors,
+            self.descriptors.set2_vectors,
         );
 
         handle
@@ -445,6 +466,9 @@ impl VkBackend {
             &self.device,
             &self.memory_prop,
             current_cmd,
+            &self.descriptors,
+            self.descriptors.set2_vectors,
+            self.descriptors.set3_matrices,
         );
 
         handle
@@ -452,22 +476,14 @@ impl VkBackend {
 
     pub fn update_phys_object(
         &mut self,
-        old_handle: PhysObjectGpuHandle,
+        handle: PhysObjectGpuHandle,
         vector: [i32; 4],
         matrix: [[f32; 4]; 4],
-    ) -> PhysObjectGpuHandle {
+    ) {
         let current_cmd = self.command_buffers[self.current_frame];
 
-        let handle = self.buffer_manager.update_phys_object(
-            old_handle,
-            vector,
-            matrix,
-            &self.device,
-            &self.memory_prop,
-            current_cmd,
-        );
-
-        handle
+        self.buffer_manager
+            .update_phys_object(handle, vector, matrix, &self.device, current_cmd);
     }
 
     pub fn unload_phys_object(&mut self, handle: PhysObjectGpuHandle) {
@@ -545,79 +561,6 @@ impl VkBackend {
         unsafe {
             self.buffer_manager.prepare_buffers(&self.device, cmd);
 
-            let indirect_barrier = vk::BufferMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::INDIRECT_COMMAND_READ) // Защищаем чтение indirect-команд
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .buffer(
-                    self.buffer_manager
-                        .indirect_buffer
-                        .gpu_indexed_indirect_buffer
-                        .buffer,
-                )
-                .offset(0)
-                .size(vk::WHOLE_SIZE);
-
-            // 2. Барьер для Вершинного буфера
-            let vertex_barrier = vk::BufferMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::VERTEX_ATTRIBUTE_READ) // Защищаем чтение вершин геометрическим блоком GPU
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .buffer(self.buffer_manager.vertex_buffer.gpu_buffers[0].buffer) // Достаем VkBuffer твоего PageBuffer
-                .offset(0)
-                .size(vk::WHOLE_SIZE);
-
-            // 3. Барьер для Индексного буфера
-            let index_barrier = vk::BufferMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::INDEX_READ) // Защищаем чтение индексов кубов
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .buffer(self.buffer_manager.index_buffer.gpu_buffers[0].buffer) // Достаем VkBuffer твоего PageBuffer
-                .offset(0)
-                .size(vk::WHOLE_SIZE);
-
-            let vector_barrier = vk::BufferMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ) // Защищаем чтение индексов кубов
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .buffer(self.buffer_manager.vector_buffer.gpu_buffers[0].buffer) // Достаем VkBuffer твоего PageBuffer
-                .offset(0)
-                .size(vk::WHOLE_SIZE);
-
-            let matrix_barrier = vk::BufferMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ) // Защищаем чтение индексов кубов
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .buffer(self.buffer_manager.matrix_buffer.gpu_buffers[0].buffer) // Достаем VkBuffer твоего PageBuffer
-                .offset(0)
-                .size(vk::WHOLE_SIZE);
-
-            // Собираем их в массив
-            let buffer_barriers = [
-                indirect_barrier,
-                vertex_barrier,
-                index_barrier,
-                vector_barrier,
-                matrix_barrier,
-            ];
-
-            self.device.cmd_pipeline_barrier(
-                cmd,
-                vk::PipelineStageFlags::TRANSFER, // Стадия-источник (копирование)
-                vk::PipelineStageFlags::VERTEX_INPUT
-                    | vk::PipelineStageFlags::DRAW_INDIRECT
-                    | vk::PipelineStageFlags::VERTEX_SHADER, // Стадии-потребители (ввод геометрии и индирект)
-                vk::DependencyFlags::empty(),
-                &[],
-                &buffer_barriers,
-                &[],
-            );
-
             // ====================================================================
             // ШАГ 2: НАЧАЛО RENDER PASS (ОЧИСТКА ЭКРАНА И ГЛУБИНЫ)
             // ====================================================================
@@ -668,20 +611,6 @@ impl VkBackend {
             // ШАГ 4: ВКЛЮЧАЕМ КОНВЕЙЕР И ДЕСКРИПТОРЫ
             // ====================================================================
 
-            self.device.cmd_bind_vertex_buffers(
-                cmd,
-                0,
-                &[self.buffer_manager.vertex_buffer.gpu_buffers[0].buffer],
-                &[0],
-            );
-
-            self.device.cmd_bind_index_buffer(
-                cmd,
-                self.buffer_manager.index_buffer.gpu_buffers[0].buffer,
-                0,
-                vk::IndexType::UINT32,
-            );
-
             self.device.cmd_bind_pipeline(
                 cmd,
                 vk::PipelineBindPoint::GRAPHICS,
@@ -698,22 +627,36 @@ impl VkBackend {
             );
 
             // ====================================================================
-            // ШАГ 5: ЖЕЛЕЗНЫЙ МУЛЬТИ-ДРОУ ВЫЗОВ (ОТРИСОВКА МИРА)
+            // ШАГ 5: МУЛЬТИ-ДРОУ ВЫЗОВ (ОТРИСОВКА МИРА)
             // ====================================================================
+            let stride = size_of::<DrawIndexedIndirectCommand>() as u32;
+            self.buffer_manager
+                .chunk_render_buffer_manager
+                .buffers
+                .iter()
+                .for_each(|buffer| {
+                    self.device.cmd_bind_vertex_buffers(
+                        cmd,
+                        0,
+                        &[buffer.vertex_buffer.buffer],
+                        &[0],
+                    );
 
-            let stride = std::mem::size_of::<vk::DrawIndexedIndirectCommand>() as u32;
-            let chunks_slots = IndirectBufferManager::ONE_VECTOR_BUFFER_SLOTS_COUNT as u32;
+                    self.device.cmd_bind_index_buffer(
+                        cmd,
+                        buffer.index_buffer.buffer,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
 
-            self.device.cmd_draw_indexed_indirect(
-                cmd,
-                self.buffer_manager
-                    .indirect_buffer
-                    .gpu_indexed_indirect_buffer
-                    .buffer,
-                stride as vk::DeviceSize,
-                chunks_slots,
-                stride,
-            );
+                    self.device.cmd_draw_indexed_indirect(
+                        cmd,
+                        buffer.indirect_buffer.buffer,
+                        0,
+                        buffer.cpu_indirect_buffer.len() as u32,
+                        stride,
+                    );
+                });
 
             self.device.cmd_bind_pipeline(
                 cmd,
@@ -730,18 +673,33 @@ impl VkBackend {
                 &[],
             );
 
-            let phys_objects_slots = IndirectBufferManager::ONE_MATRIX_BUFFER_SLOTS_COUNT as u32;
+            self.buffer_manager
+                .phys_render_buffer_manager
+                .buffers
+                .iter()
+                .for_each(|buffer| {
+                    self.device.cmd_bind_vertex_buffers(
+                        cmd,
+                        0,
+                        &[buffer.vertex_buffer.buffer],
+                        &[0],
+                    );
 
-            self.device.cmd_draw_indexed_indirect(
-                cmd,
-                self.buffer_manager
-                    .indirect_buffer
-                    .gpu_indexed_indirect_buffer
-                    .buffer,
-                stride as vk::DeviceSize * (1 + chunks_slots as u64),
-                phys_objects_slots,
-                stride,
-            );
+                    self.device.cmd_bind_index_buffer(
+                        cmd,
+                        buffer.index_buffer.buffer,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+
+                    self.device.cmd_draw_indexed_indirect(
+                        cmd,
+                        buffer.indirect_buffer.buffer,
+                        0,
+                        buffer.cpu_indirect_buffer.len() as u32,
+                        stride,
+                    );
+                });
 
             let clear_attachment = vk::ClearAttachment::default()
                 .aspect_mask(vk::ImageAspectFlags::DEPTH) // Стираем только карту глубины кадра
@@ -786,16 +744,33 @@ impl VkBackend {
             );
 
             // Вызываем INDIRECT-отрисовку руки из САМОГО НАЧАЛА буфера (Слот №0)
-            self.device.cmd_draw_indexed_indirect(
-                cmd,
-                self.buffer_manager
-                    .indirect_buffer
-                    .gpu_indexed_indirect_buffer
-                    .buffer,
-                0, // Смещение 0 байт — читаем строго Слот №0!
-                1, // Рисуем строго одну команду (нашу руку)
-                stride,
-            );
+            self.buffer_manager
+                .hand_render_buffer_manager
+                .buffers
+                .iter()
+                .for_each(|buffer| {
+                    self.device.cmd_bind_vertex_buffers(
+                        cmd,
+                        0,
+                        &[buffer.vertex_buffer.buffer],
+                        &[0],
+                    );
+
+                    self.device.cmd_bind_index_buffer(
+                        cmd,
+                        buffer.index_buffer.buffer,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+
+                    self.device.cmd_draw_indexed_indirect(
+                        cmd,
+                        buffer.indirect_buffer.buffer,
+                        0,
+                        buffer.cpu_indirect_buffer.len() as u32,
+                        stride,
+                    );
+                });
 
             // Выходим из Render Pass и закрываем «блокнот» команд кадра
             self.device.cmd_end_render_pass(cmd);

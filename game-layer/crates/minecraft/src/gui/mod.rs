@@ -1,3 +1,5 @@
+pub mod main_menu;
+
 // use glam::Vec2;
 // use lib_renderer::renderer::block_grid_renderer::Renderer;
 // use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::GuiIndexedPrimitive;

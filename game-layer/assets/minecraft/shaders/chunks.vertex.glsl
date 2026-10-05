@@ -1,5 +1,10 @@
 #version 460
 
+#extension GL_ARB_shader_draw_parameters : enable
+
+//#extension GL_EXT_nonuniform_qualifier : enable
+//#extension GL_ARB_descriptor_indexing : enable
+
 const uint SIDE_TOP = 0u;
 const uint SIDE_BOTTOM = 1u;
 const uint SIDE_NORTH = 2u;
@@ -38,7 +43,7 @@ layout(set = 1, binding = 0, std140) uniform CameraUniform {
 
 layout(set = 2, binding = 0, std430) uniform Vectors {
     ivec4 vectors[256];
-};
+} vector_pools[1024];
 
 // Глобальный массив смещений
 const uint MAPPING_OFFSETS[36] = uint[](
@@ -65,8 +70,12 @@ uint get_final_texture_layer(uint block_type, uint side_id) {
 }
 
 void main() {
-    // В Vulkan/GLSL встроенная переменная gl_InstanceID заменяет instance_index из WGSL
-    uint instance_idx = gl_InstanceIndex; 
+    uint packed_id = gl_InstanceIndex;
+    
+    uint slot_offset = packed_id & 0x0000FFFFu;
+    uint buffer_idx = packed_id >> 16u;
+
+    ivec4 chunk_pos_4d = vector_pools[buffer_idx].vectors[slot_offset];
 
     // 1. Распаковываем координаты (каждая по 6 бит)
     float local_x = float(in_packed_data & 0x3Fu);
@@ -81,7 +90,6 @@ void main() {
     out_material_id = get_final_texture_layer(block_type_id, side_id);
 
     // 3. Считаем позицию вершины относительно камеры (Твой фикс f32)
-    ivec4 chunk_pos_4d = vectors[instance_idx];
     ivec3 chunk_diff_i32 = chunk_pos_4d.xyz - camera_uniform.camera_chunk.xyz;
     
     vec3 chunk_relative_base_pos = vec3(chunk_diff_i32) * 32.0;

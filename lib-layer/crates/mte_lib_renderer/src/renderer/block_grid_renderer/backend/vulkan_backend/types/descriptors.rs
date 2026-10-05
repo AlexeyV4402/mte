@@ -25,7 +25,6 @@ impl Descriptors {
         vectors_buffer: vk::Buffer,
         matrices_buffer: vk::Buffer,
     ) -> Self {
-        // --- LAYOUT SET 0: StaticData ---
         let layout_set0 = StaticData::get_set_layout(&device);
 
         // --- LAYOUT SET 1: Camera ---
@@ -44,33 +43,49 @@ impl Descriptors {
                 .unwrap()
         };
 
+        // Флаги привязок для Векторов (СТРОГО 1 элемент, так как биндинг один)
+        let vector_binding_flags = [vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
+            | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT];
+        let mut vector_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+            .binding_flags(&vector_binding_flags);
+
         // --- LAYOUT SET 2: Vectors ---
         let binding_set2 = vk::DescriptorSetLayoutBinding::default()
             .binding(0)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
+            .descriptor_count(1024) // Максимальный лимит страниц
             .stage_flags(vk::ShaderStageFlags::VERTEX);
         let layout_set2 = unsafe {
             device
                 .create_descriptor_set_layout(
                     &vk::DescriptorSetLayoutCreateInfo::default()
-                        .bindings(std::slice::from_ref(&binding_set2)),
+                        .bindings(std::slice::from_ref(&binding_set2))
+                        .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+                        .push_next(&mut vector_flags_info),
                     None,
                 )
                 .unwrap()
         };
 
-        // --- LAYOUT SET 3: Vectors ---
+        // Флаги привязок для Матриц (СТРОГО 1 элемент)
+        let matrix_binding_flags = [vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
+            | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT];
+        let mut matrix_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+            .binding_flags(&matrix_binding_flags);
+
+        // --- LAYOUT SET 3: Matrices ---
         let binding_set3 = vk::DescriptorSetLayoutBinding::default()
             .binding(0)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
+            .descriptor_count(1024) // Максимальный лимит страниц
             .stage_flags(vk::ShaderStageFlags::VERTEX);
         let layout_set3 = unsafe {
             device
                 .create_descriptor_set_layout(
                     &vk::DescriptorSetLayoutCreateInfo::default()
-                        .bindings(std::slice::from_ref(&binding_set3)),
+                        .bindings(std::slice::from_ref(&binding_set3))
+                        .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+                        .push_next(&mut matrix_flags_info),
                     None,
                 )
                 .unwrap()
@@ -78,24 +93,25 @@ impl Descriptors {
 
         let layouts = [layout_set0, layout_set1, layout_set2, layout_set3];
 
-        // 1. Создаем DescriptorPool под наши нужды
+        // 1. Создаем DescriptorPool с ПРАВИЛЬНЫМИ размерами
         let pool_sizes = [
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::SAMPLED_IMAGE)
-                .descriptor_count(1), // Block Textures
+                .descriptor_count(1),
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::SAMPLER)
-                .descriptor_count(1), // Sampler
+                .descriptor_count(1),
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::STORAGE_BUFFER)
-                .descriptor_count(1), // Block Properties /
+                .descriptor_count(1),
             vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::UNIFORM_BUFFER)
-                .descriptor_count(3), // WorldCameraUniform / Vectors / Matrices
+                .descriptor_count(1 + 1024 + 1024), // 1 (камера) + 1024 (вектора) + 1024 (матрицы)
         ];
 
         let descriptor_pool_info = vk::DescriptorPoolCreateInfo::default()
             .max_sets(4)
+            .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND) // ОБЯЗАТЕЛЕН для UpdateAfterBind сетов
             .pool_sizes(&pool_sizes);
 
         let pool = unsafe {
@@ -104,10 +120,18 @@ impl Descriptors {
                 .unwrap()
         };
 
-        // 2. Аллоцируем дескрипторные сеты
+        // 2. Аллоцируем дескрипторные сеты с поддержкой VARIABLE_DESCRIPTOR_COUNT
+        // Мы должны явно сказать Vulkan, сколько элементов мы ХОТИМ аллоцировать прямо сейчас.
+        // Для сетов 0 и 1 передаем 0 (так как они фиксированные), для 2 и 3 — 1024.
+        let variable_counts = [0, 0, 1024, 1024];
+        let mut variable_count_alloc_info =
+            vk::DescriptorSetVariableDescriptorCountAllocateInfo::default()
+                .descriptor_counts(&variable_counts);
+
         let alloc_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(pool)
-            .set_layouts(&layouts);
+            .set_layouts(&layouts)
+            .push_next(&mut variable_count_alloc_info); // Указываем реальные каунты массивов
 
         let descriptor_sets = unsafe { device.allocate_descriptor_sets(&alloc_info).unwrap() };
 
@@ -116,7 +140,7 @@ impl Descriptors {
         let set2_vectors = descriptor_sets[2];
         let set3_matrices = descriptor_sets[3];
 
-        // 3. Подготавливаем инфо-структуры для связывания ресурсов
+        // 3. Подготавливаем инфо-структуры для связывания стартовых ресурсов
         let texture_image_info = vk::DescriptorImageInfo::default()
             .image_view(resources.texture_view)
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
@@ -134,6 +158,10 @@ impl Descriptors {
             .offset(0)
             .range(vk::WHOLE_SIZE);
 
+        // --- ВАЖНОЕ ИЗМЕНЕНИЕ ДЛЯ СТАРТА ---
+        // Поскольку set2 и set3 теперь массивы, при первичной инициализации
+        // мы привязываем твои стартовые базовые буферы (например, страницу №0)
+        // строго в нулевой элемент массива.
         let vectors_buffer_info = vk::DescriptorBufferInfo::default()
             .buffer(vectors_buffer)
             .offset(0)
@@ -168,16 +196,18 @@ impl Descriptors {
                 .dst_binding(0)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .buffer_info(std::slice::from_ref(&camera_buffer_info)),
-            // --- SET 2 ---
+            // --- SET 2 (Записываем стартовую страницу №0) ---
             vk::WriteDescriptorSet::default()
                 .dst_set(set2_vectors)
                 .dst_binding(0)
+                .dst_array_element(0) // Индекс 0 в массиве дескрипторов
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .buffer_info(std::slice::from_ref(&vectors_buffer_info)),
-            // --- SET 3 ---
+            // --- SET 3 (Записываем стартовую страницу №0) ---
             vk::WriteDescriptorSet::default()
                 .dst_set(set3_matrices)
                 .dst_binding(0)
+                .dst_array_element(0) // Индекс 0 в массиве дескрипторов
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .buffer_info(std::slice::from_ref(&matrices_buffer_info)),
         ];
@@ -229,6 +259,36 @@ impl Descriptors {
 
     pub fn hand_layouts(&self) -> [DescriptorSetLayout; 1] {
         [self.set0_layout]
+    }
+
+    pub fn update_matrix_pool(&self, device: &ash::Device, new_buffer: vk::Buffer, idx: u32) {
+        self.update_pool(device, new_buffer, self.set3_matrices, idx);
+    }
+
+    pub fn update_vector_pool(&self, device: &ash::Device, new_buffer: vk::Buffer, idx: u32) {
+        self.update_pool(device, new_buffer, self.set2_vectors, idx);
+    }
+
+    pub fn update_pool(
+        &self,
+        device: &ash::Device,
+        new_buffer: vk::Buffer,
+        set: DescriptorSet,
+        idx: u32,
+    ) {
+        let new_buffer_info = vk::DescriptorBufferInfo::default()
+            .buffer(new_buffer)
+            .offset(0)
+            .range(vk::WHOLE_SIZE);
+
+        let dyn_write = [vk::WriteDescriptorSet::default()
+            .dst_set(set)
+            .dst_binding(0)
+            .dst_array_element(idx)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .buffer_info(std::slice::from_ref(&new_buffer_info))];
+
+        unsafe { device.update_descriptor_sets(&dyn_write, &[]) };
     }
 
     pub unsafe fn destroy(&mut self, device: &ash::Device) {

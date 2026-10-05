@@ -1,13 +1,16 @@
+use std::mem;
+
 use ash::vk;
 use ash::vk::*;
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::debug::VulkanNameable;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_manager::{
-    PageAllocData, PageBuffer, SlotAllocData, SlotBuffer
+    RenderAllocData, RenderBufferManager, SlotAllocData, SlotBufferManager
 };
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::{
     VkBufferDataDL, VkBufferDataHV
 };
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::descriptors::Descriptors;
 use crate::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use crate::renderer::block_grid_renderer::types::BlockVertex;
 
@@ -24,22 +27,27 @@ pub struct IndirectBufferManager {
 
     pub cpu_staging_queue: Vec<StagingBufferCommand>,
 
-    pub indirect_buffer: IndirectBuffer,
-
-    pub vertex_buffer: PageBuffer<1024, 4096>,
-    pub index_buffer: PageBuffer<1024, 4096>,
-    pub matrix_buffer: SlotBuffer,
-    pub vector_buffer: SlotBuffer,
+    pub chunk_render_buffer_manager: RenderBufferManager,
+    pub phys_render_buffer_manager: RenderBufferManager,
+    pub hand_render_buffer_manager: RenderBufferManager,
+    pub matrix_buffer_manager: SlotBufferManager<
+        { size_of::<[[f32; 4]; 4]>() },
+        { Self::ONE_MATRIX_BUFFER_SLOTS_COUNT as usize },
+    >,
+    pub vector_buffer_manager: SlotBufferManager<
+        { size_of::<[i32; 4]>() },
+        { Self::ONE_VECTOR_BUFFER_SLOTS_COUNT as usize },
+    >,
 }
 
 impl IndirectBufferManager {
     pub const ONE_VERTEX_BUFFER_PAGE_CAPACITY: u64 = 4 * 1024;
-    pub const ONE_VERTEX_BUFFER_PAGE_COUNT: u64 = 64 * 1024;
+    pub const ONE_VERTEX_BUFFER_PAGE_COUNT: u64 = 64 * 256;
     pub const ONE_VERTEX_BUFFER_CAPACITY: u64 =
         Self::ONE_VERTEX_BUFFER_PAGE_CAPACITY * Self::ONE_VERTEX_BUFFER_PAGE_COUNT;
 
     pub const ONE_INDEX_BUFFER_PAGE_CAPACITY: u64 = 4 * 1024;
-    pub const ONE_INDEX_BUFFER_PAGE_COUNT: u64 = 64 * 1024;
+    pub const ONE_INDEX_BUFFER_PAGE_COUNT: u64 = 64 * 256;
     pub const ONE_INDEX_BUFFER_CAPACITY: u64 =
         Self::ONE_INDEX_BUFFER_PAGE_CAPACITY * Self::ONE_INDEX_BUFFER_PAGE_COUNT;
 
@@ -51,10 +59,15 @@ impl IndirectBufferManager {
     pub const ONE_VECTOR_BUFFER_CAPACITY: u64 =
         Self::ONE_VECTOR_BUFFER_SLOTS_COUNT * (size_of::<[i32; 4]>() as u64);
 
-    pub const STAGING_BUFFER_CAPACITY: u64 = 1024 * 1024 * 1024;
+    pub const STAGING_BUFFER_CAPACITY: u64 = 128 * 1024 * 1024;
 
     pub const INDIRECT_BUFFER_SLOTS_COUNT: u64 =
         Self::ONE_VECTOR_BUFFER_SLOTS_COUNT + Self::ONE_MATRIX_BUFFER_SLOTS_COUNT + 1;
+
+    pub const ONE_INDIRECT_BUFFER_SLOTS_COUNT: u64 = 128;
+    pub const ONE_INDIRECT_BUFFER_CAPACITY: u64 =
+        128 * (size_of::<DrawIndexedIndirectCommand>() as u64);
+
     pub const INDIRECT_BUFFER_CAPACITY: u64 =
         Self::INDIRECT_BUFFER_SLOTS_COUNT * (size_of::<DrawIndexedIndirectCommand>() as u64);
 
@@ -69,54 +82,28 @@ impl IndirectBufferManager {
             ),
             cpu_staging_buffer: Vec::with_capacity(Self::STAGING_BUFFER_CAPACITY as usize),
             cpu_staging_queue: Vec::new(),
-            indirect_buffer: IndirectBuffer::new(device, mem_properties),
-            vertex_buffer: PageBuffer::new(
-                device,
-                mem_properties,
-                Self::ONE_VERTEX_BUFFER_CAPACITY,
-                BufferUsageFlags::TRANSFER_DST | BufferUsageFlags::VERTEX_BUFFER,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-            ),
-            index_buffer: PageBuffer::new(
-                device,
-                mem_properties,
-                Self::ONE_INDEX_BUFFER_CAPACITY,
-                BufferUsageFlags::TRANSFER_DST | BufferUsageFlags::INDEX_BUFFER,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-            ),
-            matrix_buffer: SlotBuffer::new(
-                device,
-                mem_properties,
-                Self::ONE_MATRIX_BUFFER_CAPACITY,
-                BufferUsageFlags::TRANSFER_DST | BufferUsageFlags::UNIFORM_BUFFER,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-                size_of::<[[f32; 4]; 4]>() as u64,
-            ),
-            vector_buffer: SlotBuffer::new(
-                device,
-                mem_properties,
-                Self::ONE_VECTOR_BUFFER_CAPACITY,
-                BufferUsageFlags::TRANSFER_DST | BufferUsageFlags::UNIFORM_BUFFER,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-                16,
-            ),
+            chunk_render_buffer_manager: RenderBufferManager::new(device, mem_properties),
+            phys_render_buffer_manager: RenderBufferManager::new(device, mem_properties),
+            hand_render_buffer_manager: RenderBufferManager::new(device, mem_properties),
+            matrix_buffer_manager: SlotBufferManager::new(device, mem_properties),
+            vector_buffer_manager: SlotBufferManager::new(device, mem_properties),
         };
-        a.index_buffer.gpu_buffers[0]
-            .buffer
-            .set_name("Index Buffer");
-        a.vertex_buffer.gpu_buffers[0]
-            .buffer
-            .set_name("Vertex Buffer");
-        a.vector_buffer.gpu_buffers[0]
-            .buffer
-            .set_name("Vector Buffer");
-        a.matrix_buffer.gpu_buffers[0]
-            .buffer
-            .set_name("Matrix Buffer");
-        a.indirect_buffer
-            .gpu_indexed_indirect_buffer
-            .buffer
-            .set_name("Indexed Indirect Buffer");
+        // a.index_buffer.gpu_buffers[0]
+        //     .buffer
+        //     .set_name("Index Buffer");
+        // a.vertex_buffer.gpu_buffers[0]
+        //     .buffer
+        //     .set_name("Vertex Buffer");
+        // a.vector_buffer.gpu_buffers[0]
+        //     .buffer
+        //     .set_name("Vector Buffer");
+        // a.matrix_buffer.gpu_buffers[0]
+        //     .buffer
+        //     .set_name("Matrix Buffer");
+        // a.indirect_buffer
+        //     .gpu_indexed_indirect_buffer
+        //     .buffer
+        //     .set_name("Indexed Indirect Buffer");
 
         a
     }
@@ -128,6 +115,8 @@ impl IndirectBufferManager {
         device: &ash::Device,
         mem_properties: &vk::PhysicalDeviceMemoryProperties,
         command_buffer: vk::CommandBuffer,
+        descriptors: &Descriptors,
+        vector_descriptor_set: DescriptorSet,
     ) -> Option<ChunkGpuHandle> {
         let vert_bytes = bytemuck::cast_slice(&primitive.vertices);
         let idx_bytes = bytemuck::cast_slice(&primitive.indices);
@@ -137,17 +126,19 @@ impl IndirectBufferManager {
             return None;
         }
 
-        let vertex_alloc =
-            self.vertex_buffer
-                .alloc(vert_bytes.len() as u64, device, mem_properties);
+        let render_alloc = self.chunk_render_buffer_manager.alloc(
+            device,
+            mem_properties,
+            vert_bytes.len() as u64,
+            idx_bytes.len() as u64,
+        );
 
-        let index_alloc = self
-            .index_buffer
-            .alloc(idx_bytes.len() as u64, device, mem_properties);
-
-        let vector_alloc = self.vector_buffer.alloc(device, mem_properties);
-
-        let indirect_alloc = self.indirect_buffer.chunk_alloc();
+        let vector_alloc = self.vector_buffer_manager.alloc(
+            device,
+            mem_properties,
+            descriptors,
+            vector_descriptor_set,
+        );
 
         let vert_src_offset = self.cpu_staging_buffer.len() as u64;
         self.cpu_staging_buffer.extend_from_slice(vert_bytes);
@@ -158,15 +149,23 @@ impl IndirectBufferManager {
         let vec_src_offset = self.cpu_staging_buffer.len() as u64;
         self.cpu_staging_buffer.extend_from_slice(vec_bytes);
 
-        self.indirect_buffer.write(
-            indirect_alloc,
+        self.chunk_render_buffer_manager.write_indirect(
+            render_alloc.buffer_idx,
+            render_alloc.single_alloc_data.indirect_alloc,
             DrawIndexedIndirectCommand {
                 index_count: primitive.indices.len() as u32,
                 instance_count: 1,
-                first_index: (index_alloc.offset / 4) as u32,
-                vertex_offset: (vertex_alloc.offset / std::mem::size_of::<BlockVertex>() as u64)
-                    as i32,
-                first_instance: vector_alloc.slot_idx,
+                first_index: (render_alloc
+                    .single_alloc_data
+                    .indices_offset
+                    .get_bytes_offset()
+                    / 4) as u32,
+                vertex_offset: (render_alloc
+                    .single_alloc_data
+                    .vertices_offset
+                    .get_bytes_offset()
+                    / std::mem::size_of::<BlockVertex>()) as i32,
+                first_instance: vector_alloc.get_idx() as u32,
             },
         );
 
@@ -174,37 +173,45 @@ impl IndirectBufferManager {
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                vertex_alloc.buffer,
+                render_alloc.single_alloc_data.vertices_buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(vert_src_offset)
-                    .dst_offset(vertex_alloc.offset)
+                    .dst_offset(
+                        render_alloc
+                            .single_alloc_data
+                            .vertices_offset
+                            .get_bytes_offset() as u64,
+                    )
                     .size(vert_bytes.len() as u64)],
             );
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                index_alloc.buffer,
+                render_alloc.single_alloc_data.indices_buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(idx_src_offset)
-                    .dst_offset(index_alloc.offset)
+                    .dst_offset(
+                        render_alloc
+                            .single_alloc_data
+                            .indices_offset
+                            .get_bytes_offset() as u64,
+                    )
                     .size(idx_bytes.len() as u64)],
             );
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                vector_alloc.buffer,
+                vector_alloc.single_alloc_data.buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(vec_src_offset)
-                    .dst_offset(vector_alloc.offset)
+                    .dst_offset(vector_alloc.single_alloc_data.slot_alloc.get_bytes_offset() as u64)
                     .size(vec_bytes.len() as u64)],
             );
         }
 
         Some(ChunkGpuHandle {
-            vertex_alloc,
-            index_alloc,
+            render_alloc,
             vector_alloc,
-            indirect_alloc,
         })
     }
 
@@ -216,6 +223,9 @@ impl IndirectBufferManager {
         device: &ash::Device,
         mem_properties: &vk::PhysicalDeviceMemoryProperties,
         command_buffer: vk::CommandBuffer,
+        descriptors: &Descriptors,
+        vector_descriptor_set: DescriptorSet,
+        matrix_descriptor_set: DescriptorSet,
     ) -> Option<PhysObjectGpuHandle> {
         let vert_bytes = bytemuck::cast_slice(&primitive.vertices);
         let idx_bytes = bytemuck::cast_slice(&primitive.indices);
@@ -225,23 +235,28 @@ impl IndirectBufferManager {
             return None;
         }
 
-        let vertex_alloc =
-            self.vertex_buffer
-                .alloc(vert_bytes.len() as u64, device, mem_properties);
+        let render_alloc = self.phys_render_buffer_manager.alloc(
+            device,
+            mem_properties,
+            vert_bytes.len() as u64,
+            idx_bytes.len() as u64,
+        );
 
-        let index_alloc = self
-            .index_buffer
-            .alloc(idx_bytes.len() as u64, device, mem_properties);
+        let vector_alloc = self.vector_buffer_manager.alloc(
+            device,
+            mem_properties,
+            descriptors,
+            vector_descriptor_set,
+        );
 
-        let vector_alloc = self.vector_buffer.alloc(device, mem_properties);
+        let matrix_alloc = self.matrix_buffer_manager.alloc(
+            device,
+            mem_properties,
+            descriptors,
+            matrix_descriptor_set,
+        );
 
-        let matrix_alloc = self.matrix_buffer.alloc(device, mem_properties);
-
-        vector[3] = matrix_alloc.slot_idx as i32;
-
-        let indirect_alloc = self.indirect_buffer.phys_object_alloc();
-
-        // println!("Загрузка физического объекта: Слот вектора: {}. Значение Вектора: {:?}. Значение indirect_alloc: {}", vector_alloc.slot_idx, vector, indirect_alloc);
+        vector[3] = matrix_alloc.get_idx() as i32;
 
         let vec_bytes = bytemuck::cast_slice(&vector);
 
@@ -257,15 +272,23 @@ impl IndirectBufferManager {
         let mat_src_offset = self.cpu_staging_buffer.len() as u64;
         self.cpu_staging_buffer.extend_from_slice(mat_bytes);
 
-        self.indirect_buffer.write(
-            indirect_alloc,
+        self.chunk_render_buffer_manager.write_indirect(
+            render_alloc.buffer_idx,
+            render_alloc.single_alloc_data.indirect_alloc,
             DrawIndexedIndirectCommand {
                 index_count: primitive.indices.len() as u32,
                 instance_count: 1,
-                first_index: (index_alloc.offset / 4) as u32,
-                vertex_offset: (vertex_alloc.offset / std::mem::size_of::<BlockVertex>() as u64)
-                    as i32,
-                first_instance: vector_alloc.slot_idx,
+                first_index: (render_alloc
+                    .single_alloc_data
+                    .indices_offset
+                    .get_bytes_offset()
+                    / 4) as u32,
+                vertex_offset: (render_alloc
+                    .single_alloc_data
+                    .vertices_offset
+                    .get_bytes_offset()
+                    / std::mem::size_of::<BlockVertex>()) as i32,
+                first_instance: vector_alloc.get_idx() as u32,
             },
         );
 
@@ -273,66 +296,70 @@ impl IndirectBufferManager {
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                vertex_alloc.buffer,
+                render_alloc.single_alloc_data.vertices_buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(vert_src_offset)
-                    .dst_offset(vertex_alloc.offset)
+                    .dst_offset(
+                        render_alloc
+                            .single_alloc_data
+                            .vertices_offset
+                            .get_bytes_offset() as u64,
+                    )
                     .size(vert_bytes.len() as u64)],
             );
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                index_alloc.buffer,
+                render_alloc.single_alloc_data.indices_buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(idx_src_offset)
-                    .dst_offset(index_alloc.offset)
+                    .dst_offset(
+                        render_alloc
+                            .single_alloc_data
+                            .indices_offset
+                            .get_bytes_offset() as u64,
+                    )
                     .size(idx_bytes.len() as u64)],
             );
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                vector_alloc.buffer,
+                vector_alloc.single_alloc_data.buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(vec_src_offset)
-                    .dst_offset(vector_alloc.offset)
+                    .dst_offset(vector_alloc.single_alloc_data.slot_alloc.get_bytes_offset() as u64)
                     .size(vec_bytes.len() as u64)],
             );
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                matrix_alloc.buffer,
+                matrix_alloc.single_alloc_data.buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(mat_src_offset)
-                    .dst_offset(matrix_alloc.offset)
+                    .dst_offset(matrix_alloc.single_alloc_data.slot_alloc.get_bytes_offset() as u64)
                     .size(mat_bytes.len() as u64)],
             );
         }
 
         Some(PhysObjectGpuHandle {
-            vertex_alloc,
-            index_alloc,
+            render_alloc,
             vector_alloc,
             matrix_alloc,
-            indirect_alloc,
         })
     }
 
     pub fn update_phys_object(
         &mut self,
-        mut old_handle: PhysObjectGpuHandle,
+        handle: PhysObjectGpuHandle,
         mut vector: [i32; 4],
         matrix: [[f32; 4]; 4],
         device: &ash::Device,
-        mem_properties: &PhysicalDeviceMemoryProperties,
         command_buffer: CommandBuffer,
-    ) -> PhysObjectGpuHandle {
-        self.vector_buffer.free(old_handle.vector_alloc);
-        self.matrix_buffer.free(old_handle.matrix_alloc);
+    ) {
+        let vector_alloc = handle.vector_alloc;
+        let matrix_alloc = handle.matrix_alloc;
 
-        let vector_alloc = self.vector_buffer.alloc(device, mem_properties);
-        let matrix_alloc = self.matrix_buffer.alloc(device, mem_properties);
-
-        vector[3] = matrix_alloc.slot_idx as i32;
+        vector[3] = handle.matrix_alloc.get_idx() as i32;
 
         let mat_bytes = bytemuck::cast_slice(&matrix);
         let vec_bytes = bytemuck::cast_slice(&vector);
@@ -343,38 +370,26 @@ impl IndirectBufferManager {
         let mat_src_offset = self.cpu_staging_buffer.len() as u64;
         self.cpu_staging_buffer.extend_from_slice(mat_bytes);
 
-        let old_cmd = self.indirect_buffer.get_cmd(old_handle.indirect_alloc);
-
-        self.indirect_buffer.write(
-            old_handle.indirect_alloc,
-            old_cmd.first_instance(vector_alloc.slot_idx),
-        );
-
         unsafe {
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                vector_alloc.buffer,
+                vector_alloc.single_alloc_data.buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(vec_src_offset)
-                    .dst_offset(vector_alloc.offset)
+                    .dst_offset(vector_alloc.single_alloc_data.slot_alloc.get_bytes_offset() as u64)
                     .size(vec_bytes.len() as u64)],
             );
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                matrix_alloc.buffer,
+                matrix_alloc.single_alloc_data.buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(mat_src_offset)
-                    .dst_offset(matrix_alloc.offset)
+                    .dst_offset(matrix_alloc.single_alloc_data.slot_alloc.get_bytes_offset() as u64)
                     .size(mat_bytes.len() as u64)],
             );
         }
-
-        old_handle.vector_alloc = vector_alloc;
-        old_handle.matrix_alloc = matrix_alloc;
-
-        old_handle
     }
 
     pub fn load_hand(
@@ -391,15 +406,12 @@ impl IndirectBufferManager {
             return None;
         }
 
-        let vertex_alloc =
-            self.vertex_buffer
-                .alloc(vert_bytes.len() as u64, device, mem_properties);
-
-        let index_alloc = self
-            .index_buffer
-            .alloc(idx_bytes.len() as u64, device, mem_properties);
-
-        let indirect_alloc = self.indirect_buffer.hand_alloc();
+        let render_alloc = self.hand_render_buffer_manager.alloc(
+            device,
+            mem_properties,
+            vert_bytes.len() as u64,
+            idx_bytes.len() as u64,
+        );
 
         let vert_src_offset = self.cpu_staging_buffer.len() as u64;
         self.cpu_staging_buffer.extend_from_slice(vert_bytes);
@@ -407,14 +419,22 @@ impl IndirectBufferManager {
         let idx_src_offset = self.cpu_staging_buffer.len() as u64;
         self.cpu_staging_buffer.extend_from_slice(idx_bytes);
 
-        self.indirect_buffer.write(
-            indirect_alloc,
+        self.chunk_render_buffer_manager.write_indirect(
+            render_alloc.buffer_idx,
+            render_alloc.single_alloc_data.indirect_alloc,
             DrawIndexedIndirectCommand {
                 index_count: primitive.indices.len() as u32,
                 instance_count: 1,
-                first_index: (index_alloc.offset / 4) as u32,
-                vertex_offset: (vertex_alloc.offset / std::mem::size_of::<BlockVertex>() as u64)
-                    as i32,
+                first_index: (render_alloc
+                    .single_alloc_data
+                    .indices_offset
+                    .get_bytes_offset()
+                    / 4) as u32,
+                vertex_offset: (render_alloc
+                    .single_alloc_data
+                    .vertices_offset
+                    .get_bytes_offset()
+                    / std::mem::size_of::<BlockVertex>()) as i32,
                 first_instance: 0,
             },
         );
@@ -423,68 +443,58 @@ impl IndirectBufferManager {
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                vertex_alloc.buffer,
+                render_alloc.single_alloc_data.vertices_buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(vert_src_offset)
-                    .dst_offset(vertex_alloc.offset)
+                    .dst_offset(
+                        render_alloc
+                            .single_alloc_data
+                            .vertices_offset
+                            .get_bytes_offset() as u64,
+                    )
                     .size(vert_bytes.len() as u64)],
             );
             device.cmd_copy_buffer(
                 command_buffer,
                 self.gpu_staging_buffer.buffer,
-                index_alloc.buffer,
+                render_alloc.single_alloc_data.indices_buffer,
                 &[vk::BufferCopy::default()
                     .src_offset(idx_src_offset)
-                    .dst_offset(index_alloc.offset)
+                    .dst_offset(
+                        render_alloc
+                            .single_alloc_data
+                            .indices_offset
+                            .get_bytes_offset() as u64,
+                    )
                     .size(idx_bytes.len() as u64)],
             );
         }
 
-        Some(HandGpuHandle {
-            vertex_alloc,
-            index_alloc,
-            indirect_alloc,
-        })
+        Some(HandGpuHandle { render_alloc })
     }
 
     pub fn unload_chunk(&mut self, data: ChunkGpuHandle) {
-        self.vertex_buffer.free(data.vertex_alloc);
-        self.index_buffer.free(data.index_alloc);
-        self.vector_buffer.free(data.vector_alloc);
-        self.indirect_buffer.chunk_free(data.indirect_alloc);
+        self.chunk_render_buffer_manager.free(data.render_alloc);
+        self.vector_buffer_manager.free(data.vector_alloc);
     }
 
     pub fn unload_phys_object(&mut self, data: PhysObjectGpuHandle) {
-        self.vertex_buffer.free(data.vertex_alloc);
-        self.index_buffer.free(data.index_alloc);
-        self.vector_buffer.free(data.vector_alloc);
-        self.matrix_buffer.free(data.matrix_alloc);
-        self.indirect_buffer.chunk_free(data.indirect_alloc);
+        self.phys_render_buffer_manager.free(data.render_alloc);
+        self.vector_buffer_manager.free(data.vector_alloc);
+        self.matrix_buffer_manager.free(data.matrix_alloc);
     }
 
     pub fn unload_hand(&mut self, data: HandGpuHandle) {
-        self.vertex_buffer.free(data.vertex_alloc);
-        self.index_buffer.free(data.index_alloc);
+        self.hand_render_buffer_manager.free(data.render_alloc);
     }
 
     pub fn prepare_buffers(&mut self, device: &ash::Device, command_buffer: vk::CommandBuffer) {
-        let command_bytes: &[u8] = unsafe {
-            std::slice::from_raw_parts(
-                self.indirect_buffer.cpu_indexed_indirect_buffer.as_ptr() as *const u8,
-                self.indirect_buffer.cpu_indexed_indirect_buffer.len()
-                    * std::mem::size_of::<vk::DrawIndexedIndirectCommand>(),
-            )
-        };
-
-        self.cpu_staging_queue.push(StagingBufferCommand {
-            src_offset: self.cpu_staging_buffer.len() as u64,
-            dst_offset: 0,
-            length: (self.indirect_buffer.cpu_indexed_indirect_buffer.len()
-                * std::mem::size_of::<vk::DrawIndexedIndirectCommand>()) as u64,
-            dst: self.indirect_buffer.gpu_indexed_indirect_buffer.buffer,
-        });
-
-        self.cpu_staging_buffer.extend_from_slice(command_bytes);
+        self.chunk_render_buffer_manager
+            .write_staging(&mut self.cpu_staging_queue, &mut self.cpu_staging_buffer);
+        self.phys_render_buffer_manager
+            .write_staging(&mut self.cpu_staging_queue, &mut self.cpu_staging_buffer);
+        self.hand_render_buffer_manager
+            .write_staging(&mut self.cpu_staging_queue, &mut self.cpu_staging_buffer);
 
         self.cpu_staging_queue.drain(..).for_each(|cmd| unsafe {
             device.cmd_copy_buffer(
@@ -506,125 +516,119 @@ impl IndirectBufferManager {
             );
         }
 
+        let mut barriers: Vec<_> = Vec::new();
+
+        self.chunk_render_buffer_manager
+            .barrier_queue
+            .drain(..)
+            .for_each(|barrier_data| {
+                barriers.push(
+                    vk::BufferMemoryBarrier::default()
+                        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                        .dst_access_mask(barrier_data.dst_access_mask) // Защищаем чтение indirect-команд
+                        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .buffer(barrier_data.buffer)
+                        .offset(0)
+                        .size(vk::WHOLE_SIZE),
+                );
+            });
+
+        self.phys_render_buffer_manager
+            .barrier_queue
+            .drain(..)
+            .for_each(|barrier_data| {
+                barriers.push(
+                    vk::BufferMemoryBarrier::default()
+                        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                        .dst_access_mask(barrier_data.dst_access_mask) // Защищаем чтение indirect-команд
+                        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .buffer(barrier_data.buffer)
+                        .offset(0)
+                        .size(vk::WHOLE_SIZE),
+                );
+            });
+
+        self.hand_render_buffer_manager
+            .barrier_queue
+            .drain(..)
+            .for_each(|barrier_data| {
+                barriers.push(
+                    vk::BufferMemoryBarrier::default()
+                        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                        .dst_access_mask(barrier_data.dst_access_mask) // Защищаем чтение indirect-команд
+                        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .buffer(barrier_data.buffer)
+                        .offset(0)
+                        .size(vk::WHOLE_SIZE),
+                );
+            });
+
+        self.vector_buffer_manager
+            .barrier_queue
+            .drain(..)
+            .for_each(|barrier_data| {
+                barriers.push(
+                    vk::BufferMemoryBarrier::default()
+                        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                        .dst_access_mask(barrier_data.dst_access_mask) // Защищаем чтение indirect-команд
+                        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .buffer(barrier_data.buffer)
+                        .offset(0)
+                        .size(vk::WHOLE_SIZE),
+                );
+            });
+
+        self.matrix_buffer_manager
+            .barrier_queue
+            .drain(..)
+            .for_each(|barrier_data| {
+                barriers.push(
+                    vk::BufferMemoryBarrier::default()
+                        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                        .dst_access_mask(barrier_data.dst_access_mask) // Защищаем чтение indirect-команд
+                        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                        .buffer(barrier_data.buffer)
+                        .offset(0)
+                        .size(vk::WHOLE_SIZE),
+                );
+            });
+        unsafe {
+            device.cmd_pipeline_barrier(
+                command_buffer,
+                vk::PipelineStageFlags::TRANSFER, // Стадия-источник (копирование)
+                vk::PipelineStageFlags::VERTEX_INPUT
+                    | vk::PipelineStageFlags::DRAW_INDIRECT
+                    | vk::PipelineStageFlags::VERTEX_SHADER, // Стадии-потребители (ввод геометрии и индирект)
+                vk::DependencyFlags::empty(),
+                &[],
+                &barriers,
+                &[],
+            );
+        }
+
         self.cpu_staging_buffer.clear();
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct ChunkGpuHandle {
-    pub vertex_alloc: PageAllocData,
-    pub index_alloc: PageAllocData,
-    pub vector_alloc: SlotAllocData,
-    pub indirect_alloc: IndirectAllocData,
+    pub render_alloc: RenderAllocData,
+    pub vector_alloc: SlotAllocData<{ size_of::<[i32; 4]>() }>,
 }
 
 #[derive(Clone, Copy)]
 pub struct HandGpuHandle {
-    pub vertex_alloc: PageAllocData,
-    pub index_alloc: PageAllocData,
-    pub indirect_alloc: IndirectAllocData,
+    pub render_alloc: RenderAllocData,
 }
 
 #[derive(Clone, Copy)]
 pub struct PhysObjectGpuHandle {
-    pub vertex_alloc: PageAllocData,
-    pub index_alloc: PageAllocData,
-    pub vector_alloc: SlotAllocData,
-    pub matrix_alloc: SlotAllocData,
-    pub indirect_alloc: IndirectAllocData,
-}
-
-pub struct IndirectBuffer {
-    pub gpu_indexed_indirect_buffer: VkBufferDataDL,
-    pub cpu_indexed_indirect_buffer: Vec<DrawIndexedIndirectCommand>,
-
-    pub chunks_free_slots: Vec<usize>,
-    pub phys_objects_free_slots: Vec<usize>,
-}
-
-#[derive(Clone, Copy)]
-pub struct IndirectAllocData {
-    _buffer: vk::Buffer,
-    idx: usize,
-}
-
-impl IndirectBuffer {
-    pub fn new(device: &ash::Device, mem_properties: &vk::PhysicalDeviceMemoryProperties) -> Self {
-        IndirectBuffer {
-            gpu_indexed_indirect_buffer: VkBufferDataDL::new(
-                device,
-                mem_properties,
-                IndirectBufferManager::INDIRECT_BUFFER_CAPACITY,
-                BufferUsageFlags::TRANSFER_DST | BufferUsageFlags::INDIRECT_BUFFER,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-            ),
-            cpu_indexed_indirect_buffer: vec![
-                DrawIndexedIndirectCommand::default();
-                IndirectBufferManager::INDIRECT_BUFFER_SLOTS_COUNT
-                    as usize
-            ],
-            chunks_free_slots: (1..IndirectBufferManager::ONE_VECTOR_BUFFER_SLOTS_COUNT as usize
-                + 1)
-                .collect(),
-            phys_objects_free_slots: (IndirectBufferManager::ONE_VECTOR_BUFFER_SLOTS_COUNT as usize
-                + 1
-                ..(IndirectBufferManager::INDIRECT_BUFFER_SLOTS_COUNT as usize))
-                .collect(),
-        }
-    }
-
-    pub fn get_cmd(&mut self, alloc_data: IndirectAllocData) -> DrawIndexedIndirectCommand {
-        self.cpu_indexed_indirect_buffer[alloc_data.idx]
-    }
-
-    pub fn write(
-        &mut self,
-        alloc_data: IndirectAllocData,
-        indirect_cmd: DrawIndexedIndirectCommand,
-    ) {
-        self.cpu_indexed_indirect_buffer[alloc_data.idx] = indirect_cmd;
-    }
-
-    pub fn chunk_alloc(&mut self) -> IndirectAllocData {
-        return IndirectAllocData {
-            _buffer: self.gpu_indexed_indirect_buffer.buffer,
-            idx: self.chunks_free_slots.pop().unwrap(),
-        };
-    }
-
-    pub fn phys_object_alloc(&mut self) -> IndirectAllocData {
-        return IndirectAllocData {
-            _buffer: self.gpu_indexed_indirect_buffer.buffer,
-            idx: self.phys_objects_free_slots.pop().unwrap(),
-        };
-    }
-
-    pub fn hand_alloc(&mut self) -> IndirectAllocData {
-        return IndirectAllocData {
-            _buffer: self.gpu_indexed_indirect_buffer.buffer,
-            idx: 0,
-        };
-    }
-
-    pub fn phys_object_free(&mut self, data: IndirectAllocData) {
-        self.cpu_indexed_indirect_buffer[data.idx] = DrawIndexedIndirectCommand {
-            index_count: 0,
-            instance_count: 0,
-            first_index: 0,
-            vertex_offset: 0,
-            first_instance: 0,
-        };
-        self.phys_objects_free_slots.push(data.idx);
-    }
-
-    pub fn chunk_free(&mut self, data: IndirectAllocData) {
-        self.cpu_indexed_indirect_buffer[data.idx] = DrawIndexedIndirectCommand {
-            index_count: 0,
-            instance_count: 0,
-            first_index: 0,
-            vertex_offset: 0,
-            first_instance: 0,
-        };
-        self.chunks_free_slots.push(data.idx);
-    }
+    pub render_alloc: RenderAllocData,
+    pub vector_alloc: SlotAllocData<{ size_of::<[i32; 4]>() }>,
+    pub matrix_alloc: SlotAllocData<{ size_of::<[[f32; 4]; 4]>() }>,
 }
