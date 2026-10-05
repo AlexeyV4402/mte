@@ -272,7 +272,7 @@ impl IndirectBufferManager {
         let mat_src_offset = self.cpu_staging_buffer.len() as u64;
         self.cpu_staging_buffer.extend_from_slice(mat_bytes);
 
-        self.chunk_render_buffer_manager.write_indirect(
+        self.phys_render_buffer_manager.write_indirect(
             render_alloc.buffer_idx,
             render_alloc.single_alloc_data.indirect_alloc,
             DrawIndexedIndirectCommand {
@@ -419,7 +419,7 @@ impl IndirectBufferManager {
         let idx_src_offset = self.cpu_staging_buffer.len() as u64;
         self.cpu_staging_buffer.extend_from_slice(idx_bytes);
 
-        self.chunk_render_buffer_manager.write_indirect(
+        self.hand_render_buffer_manager.write_indirect(
             render_alloc.buffer_idx,
             render_alloc.single_alloc_data.indirect_alloc,
             DrawIndexedIndirectCommand {
