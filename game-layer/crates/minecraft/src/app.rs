@@ -102,12 +102,14 @@ impl ApplicationHandler<()> for App {
         };
 
         let screen_size = window.inner_size();
-
-        self.state_manager.about_to_wait(
+        if !self.paused {
+            self.state_manager.about_to_wait(
             dt,
             &self.input_state,
             Vec2::new(screen_size.width as f32, screen_size.height as f32),
         );
+        }
+        
 
         if self.input_state.is_just_pressed(F11) {
             if window.fullscreen().is_none() {

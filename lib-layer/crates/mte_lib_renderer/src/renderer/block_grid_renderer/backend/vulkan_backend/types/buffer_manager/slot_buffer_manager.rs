@@ -78,6 +78,9 @@ impl<const SLOT_SIZE: usize, const SLOT_COUNT: usize> SlotBufferManager<SLOT_SIZ
     }
 
     pub fn free(&mut self, alloc_data: SlotAllocData<SLOT_SIZE>) {
+        // free внутри одиночного буфер
+        self.buffers[alloc_data.buffer_idx].free(alloc_data.single_alloc_data);
+
         if !self.barrier_queue.contains(&BarrierData {
             dst_access_mask: vk::AccessFlags::SHADER_READ,
             buffer: alloc_data.single_alloc_data.buffer,

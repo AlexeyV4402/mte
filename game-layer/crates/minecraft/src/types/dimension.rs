@@ -142,6 +142,9 @@ impl Dimension {
                         chunk_mesh,
                         dirty_chunk_coords.0.to_vec4_left().to_array(),
                     );
+                    // if let Some(id)  = id {
+                    //     println!("{}", id.vector_alloc)
+                    // }
                     chunk.vram_slot_id = id;
                 }
             });

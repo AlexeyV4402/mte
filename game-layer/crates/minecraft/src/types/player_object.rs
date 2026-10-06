@@ -61,8 +61,8 @@ impl PlayerObject {
         _event_queue: &mut Vec<PhysicsEvent>,
     ) {
         self.camera.update(input_state, dt);
-        let dt = dt.as_secs_f32();
-        self.physic_body.update_physics(dt);
+        // let dt = dt.as_secs_f32();
+        // self.physic_body.update_physics(dt);
 
         let forward = self.camera.lens.get_direction();
 
@@ -73,23 +73,25 @@ impl PlayerObject {
         let move_forward = get_axis(KeyCode::KeyW) - get_axis(KeyCode::KeyS);
         let move_right = get_axis(KeyCode::KeyD) - get_axis(KeyCode::KeyA);
 
-        let move_force = get_axis(KeyCode::ShiftLeft) * MOVE_FORCE + MOVE_FORCE;
+        // let move_force = get_axis(KeyCode::ShiftLeft) * MOVE_FORCE + MOVE_FORCE;
 
-        let move_up =
-            (input_state.is_down(KeyCode::Space) && self.physic_body.on_ground()) as u32 as f32;
+        // let move_up =
+        //     (input_state.is_down(KeyCode::Space) && self.physic_body.on_ground()) as u32 as f32;
 
-        // let move_up = get_axis(KeyCode::Space) - get_axis(KeyCode::ShiftLeft);
-        // let up = Vec3::Y;
-        // let move_force = 0.1;
-        // self.physic_body.position.in_chunk += (move_force * (move_forward * forward + move_right * right + move_up * up)).into();
-        // self.physic_body.position.normalize();
+        let move_up = get_axis(KeyCode::Space) - get_axis(KeyCode::ControlLeft);
+        let up = Vec3::Y;
+        let move_force = 0.3 + 0.3 * get_axis(KeyCode::ShiftLeft);
+        self.physic_body.position.in_chunk += (move_force * (move_forward * forward + move_right * right + move_up * up)).into();
+        self.physic_body.position.normalize();
 
-        let acceleration = forward.with_y(0.0).normalize_or_zero() * move_forward * move_force
-            + right * move_right * move_force
-            + GRAVITY_FORCE;
 
-        self.physic_body.acceleration = acceleration;
-        self.physic_body.velocity.y += JUMP_SPEED * move_up;
+
+        // let acceleration = forward.with_y(0.0).normalize_or_zero() * move_forward * move_force
+        //     + right * move_right * move_force
+        //     + GRAVITY_FORCE;
+
+        // self.physic_body.acceleration = acceleration;
+        // self.physic_body.velocity.y += JUMP_SPEED * move_up;
 
         let mouse_wheel_delta = input_state.mouse_scroll_delta as i16;
 
@@ -107,8 +109,8 @@ impl PlayerObject {
             ItemType::Item(_true_item) => todo!(),
         }
 
-        // // Теперь двигаем тело и разрешаем коллизии
-        self.physic_body.move_and_resolve(dimension, dt);
+        // // // Теперь двигаем тело и разрешаем коллизии
+        // self.physic_body.move_and_resolve(dimension, dt);
     }
 
     pub fn process_rmb(

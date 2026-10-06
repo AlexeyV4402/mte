@@ -40,11 +40,6 @@ impl RenderBufferManager {
         self.buffers[buffer_idx].cpu_indirect_buffer[alloc_idx] = cmd;
     }
 
-    pub fn clear_indirect(&mut self, buffer_idx: usize, alloc_idx: usize) {
-        self.buffers[buffer_idx].cpu_indirect_buffer[alloc_idx] =
-            DrawIndexedIndirectCommand::default();
-    }
-
     pub fn alloc(
         &mut self,
         device: &ash::Device,
@@ -92,7 +87,9 @@ impl RenderBufferManager {
     }
 
     pub fn free(&mut self, alloc_data: RenderAllocData) {
+        // free внутри одиночного буфер
         self.buffers[alloc_data.buffer_idx].free(alloc_data.single_alloc_data);
+
         if !self.barrier_queue.contains(&BarrierData {
             dst_access_mask: vk::AccessFlags::INDIRECT_COMMAND_READ,
             buffer: alloc_data.single_alloc_data.indirect_buffer,
@@ -247,6 +244,7 @@ impl RenderBuffer {
             alloc_data.indices_offset.get_sectors_offset(),
             alloc_data.indices_sector_count,
         );
+        self.cpu_indirect_buffer[alloc_data.indirect_alloc] = DrawIndexedIndirectCommand::default();
         self.inderect_alloc_helper.push(alloc_data.indirect_alloc);
     }
 
