@@ -1,6 +1,6 @@
 use crate::math::vectors::vec3::core::Vector3;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PrecisePosition<const CHUNK_SIZE: usize> {
     pub chunk: Vector3<i32>,
     pub in_chunk: Vector3<f32>,

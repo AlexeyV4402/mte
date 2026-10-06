@@ -8,7 +8,11 @@ pub struct MainMenuState {
 }
 
 impl MainMenuState {
-    pub fn new(device: &ash::Device, mem_properties: &ash::vk::PhysicalDeviceMemoryProperties, render_pass: ash::vk::RenderPass) -> Self {
+    pub fn new(
+        device: &ash::Device,
+        mem_properties: &ash::vk::PhysicalDeviceMemoryProperties,
+        render_pass: ash::vk::RenderPass,
+    ) -> Self {
         Self {
             vk_data: VkGuiData::new(device, mem_properties, render_pass),
             main_menu: MainMenu::new(),

@@ -3,7 +3,6 @@ use std::mem;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_data::VkInGameData;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::types::game_buffer_manager::PhysObjectGpuHandle;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkGameBackend;
 
 use crate::physics_world::components::Components;
 
@@ -17,7 +16,12 @@ pub struct RenderModule {
 }
 
 impl RenderModule {
-    pub fn update_meshes(&mut self, renderer_data: &mut VkInGameData, renderer: &VkBackend, components: &Components) {
+    pub fn update_meshes(
+        &mut self,
+        renderer_data: &mut VkInGameData,
+        renderer: &VkBackend,
+        components: &Components,
+    ) {
         if self.show_queue.len() > 0 {
             let mut queue = mem::replace(&mut self.show_queue, Vec::with_capacity(32));
             queue.drain(..).for_each(|idx| {

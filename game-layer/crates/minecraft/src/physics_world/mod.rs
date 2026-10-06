@@ -7,9 +7,7 @@ use std::time::Duration;
 
 use glam::{Mat3, Vec3};
 use lib_core::math::vectors::custom::PrecisePositionC32;
-use lib_core::math::vectors::vec3::core::Vector3;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_data::VkInGameData;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkGameBackend;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 
 use crate::physics_world::components::Components;
@@ -62,7 +60,8 @@ impl PhysicsWorld {
     }
 
     pub fn update_meshes(&mut self, renderer_data: &mut VkInGameData, renderer: &VkBackend) {
-        self.render_module.update_meshes(renderer_data, renderer, &self.data);
+        self.render_module
+            .update_meshes(renderer_data, renderer, &self.data);
     }
 
     pub fn update(&mut self, delta_time: Duration, overworld: &Dimension) {

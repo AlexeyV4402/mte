@@ -32,6 +32,7 @@ pollster = {workspace = true}
 rustc-hash = {workspace = true}
 rayon = {workspace = true}
 ash = {workspace = true}
+chrono = {workspace = true}
 [build-dependencies]
 lib_core = {workspace = true}
 mte_macros = {workspace = true}

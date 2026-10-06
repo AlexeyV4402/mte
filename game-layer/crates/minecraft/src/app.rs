@@ -3,24 +3,14 @@ use std::time::Instant;
 
 use glam::Vec2;
 use lib_io::user_io::InputState;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkGameBackend;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::gui_renderer::VkGuiBackend;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
-use lib_renderer::renderer::block_grid_renderer::render_objects::camera::RotatableLens;
-use lib_renderer::renderer::block_grid_renderer::types::RendererCreateArgs;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode::{Escape, F1, F11};
 use winit::window::{CursorGrabMode, Window, WindowAttributes};
 
-use crate::gui::main_menu::MainMenu;
 use crate::state_manager::StateManager;
-use crate::types::blocks::block::{
-    BLOCK_PROPERTIES_REGISTRY, CUBE_LINES, REGISTERED_TEXTURES_COUNT
-};
-use crate::types::world::World;
-use crate::utils::world_generator::SuperSimplexGenerator;
 
 pub struct App {
     vk_backend: Option<VkBackend>,
@@ -52,8 +42,6 @@ impl ApplicationHandler<()> for App {
             .with_inner_size(winit::dpi::LogicalSize::new(2000.0, 1200.0));
 
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-
-        
 
         let vk_backend = VkBackend::new(window.clone());
 
@@ -115,7 +103,11 @@ impl ApplicationHandler<()> for App {
 
         let screen_size = window.inner_size();
 
-        self.state_manager.about_to_wait(dt, &self.input_state, Vec2::new(screen_size.width as f32, screen_size.height as f32));
+        self.state_manager.about_to_wait(
+            dt,
+            &self.input_state,
+            Vec2::new(screen_size.width as f32, screen_size.height as f32),
+        );
 
         if self.input_state.is_just_pressed(F11) {
             if window.fullscreen().is_none() {

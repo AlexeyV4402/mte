@@ -2,16 +2,16 @@ use std::ops::Div;
 
 use glam::Vec2;
 use lib_io::user_io::InputState;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkGameBackend;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::gui_data::VkGuiData;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::gui_renderer::VkGuiBackend;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::GuiIndexedPrimitive;
 use lib_renderer::renderer::block_grid_renderer::types::vertex::GuiVertex;
 
 use crate::state_manager::GlobalEvent;
 
-enum GuiEvent {}
+enum GuiEvent {
+    ButtonDown(usize),
+}
 
 pub struct MainMenu {
     elements: [GuiElement; 3],
@@ -60,7 +60,12 @@ impl MainMenu {
         });
     }
 
-    pub fn update(&mut self, input_state: &InputState, global_event_queue: &mut Vec<GlobalEvent>, screen_size: Vec2) {
+    pub fn update(
+        &mut self,
+        input_state: &InputState,
+        global_event_queue: &mut Vec<GlobalEvent>,
+        screen_size: Vec2,
+    ) {
         let normalized_mouse = input_state.mouse_pos.div(screen_size);
 
         // 2. Переводим в NDC Vulkan: [0.0; 1.0] -> [-1.0; 1.0]
@@ -70,7 +75,8 @@ impl MainMenu {
         );
         self.elements
             .iter_mut()
-            .for_each(|element| match element.vidget_type {
+            .enumerate()
+            .for_each(|(idx, element)| match element.vidget_type {
                 VidgetType::None => todo!(),
                 VidgetType::Button => {
                     if mouse_pos.x < element.pos_max.x
@@ -80,7 +86,7 @@ impl MainMenu {
                     {
                         if input_state.is_mouse_down(winit::event::MouseButton::Left) {
                             element.vidget_state = VidgetState::Down;
-                            global_event_queue.push(GlobalEvent::StartGame);
+                            self.event_queue.push(GuiEvent::ButtonDown(idx));
                         } else {
                             element.vidget_state = VidgetState::Hover
                         }
@@ -89,6 +95,18 @@ impl MainMenu {
                     }
                 }
             });
+
+        self.read_event_queue(global_event_queue);
+    }
+
+    fn read_event_queue(&mut self, global_event_queue: &mut Vec<GlobalEvent>) {
+        self.event_queue.drain(..).for_each(|event| match event {
+            GuiEvent::ButtonDown(idx) => {
+                if idx == 1 {
+                    global_event_queue.push(GlobalEvent::StartGame);
+                }
+            }
+        });
     }
 }
 

@@ -8,7 +8,6 @@ use lib_io::user_io::InputState;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_data::VkInGameData;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::types::game_buffer_manager::HandGpuHandle;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkGameBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::camera::{
     RotatableCamera, WorldCameraUniform
 };
@@ -163,7 +162,11 @@ impl PlayerObject {
             .get_world_uniform(self.get_camera_position())
     }
 
-    pub fn update_inventory_meshes(&mut self, renderer_data: &mut VkInGameData, renderer: &VkBackend) {
+    pub fn update_inventory_meshes(
+        &mut self,
+        renderer_data: &mut VkInGameData,
+        renderer: &VkBackend,
+    ) {
         if self.hand_dirty {
             if let Some(data) = self.hand_gpu_handle {
                 renderer_data.unload_hand(data);

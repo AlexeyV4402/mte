@@ -45,12 +45,12 @@ impl Default for RegionData {
     }
 }
 
-pub struct SaveManager {
+pub struct DimensionManager {
     regions: FxHashMap<RegionCoords, RegionData>,
     current_center: RegionCoords,
 }
 
-impl SaveManager {
+impl DimensionManager {
     pub const SECTOR_SIZE: usize = 4096;
     pub const HEADER_SIZE_RAW: usize = 16 + (32 * 32 * 32) * 4;
     pub const OFFSETS_SIZE: usize = 32 * 32 * 32;

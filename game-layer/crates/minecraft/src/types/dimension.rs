@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 use crate::types::blocks::block::Block;
 use crate::types::chunk::Chunk;
 use crate::types::coordinates::core::{ChunkCoords, GlobalCoords, InternalCoords};
-use crate::utils::save_manager::SaveManager;
+use crate::utils::save_manager::dimension_manager::DimensionManager;
 use crate::utils::world_generator::WorldGenerator;
 
 pub struct Dimension {
@@ -65,7 +65,11 @@ impl Dimension {
         self.unload_queue.push(coords);
     }
 
-    pub fn prepare_chunks<G: WorldGenerator>(&mut self, generator: &G, save_manager: &SaveManager) {
+    pub fn prepare_chunks<G: WorldGenerator>(
+        &mut self,
+        generator: &G,
+        save_manager: &DimensionManager,
+    ) {
         let queue = mem::replace(&mut self.prepare_queue, Vec::with_capacity(32));
 
         if queue.is_empty() {
@@ -95,7 +99,7 @@ impl Dimension {
         self.chunks.extend(generated.into_iter());
     }
 
-    pub fn save_chunks(&mut self, save_manager: &mut SaveManager) {
+    pub fn save_chunks(&mut self, save_manager: &mut DimensionManager) {
         if self.unload_queue.is_empty() {
             return;
         }
@@ -133,8 +137,11 @@ impl Dimension {
                         renderer_data.unload_chunk(old_id);
                     }
 
-                    let id = renderer_data
-                        .load_chunk(renderer, chunk_mesh, dirty_chunk_coords.0.to_vec4_left().to_array());
+                    let id = renderer_data.load_chunk(
+                        renderer,
+                        chunk_mesh,
+                        dirty_chunk_coords.0.to_vec4_left().to_array(),
+                    );
                     chunk.vram_slot_id = id;
                 }
             });

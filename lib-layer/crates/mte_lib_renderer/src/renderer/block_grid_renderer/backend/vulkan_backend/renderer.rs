@@ -322,7 +322,10 @@ impl VkBackend {
         }
     }
 
-    pub fn end_frame<D: RenderData>(&mut self, data: &mut D) -> std::result::Result<(), ash::vk::Result> {
+    pub fn end_frame<D: RenderData>(
+        &mut self,
+        data: &mut D,
+    ) -> std::result::Result<(), ash::vk::Result> {
         let frame = self.current_frame;
         let img_idx = self.image_index as usize;
         let cmd = self.command_buffers[frame];
@@ -375,7 +378,7 @@ impl VkBackend {
 
             self.device.cmd_set_viewport(cmd, 0, &[viewport]);
             self.device.cmd_set_scissor(cmd, 0, &[scissor]);
-            
+
             data.draw(&self);
 
             // Выходим из Render Pass и закрываем «блокнот» команд кадра
@@ -437,7 +440,6 @@ impl VkBackend {
         std::result::Result::Ok(())
     }
 }
-
 
 pub trait RenderData {
     fn prepare_buffers(&mut self, renderer: &VkBackend);

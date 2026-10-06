@@ -1,11 +1,12 @@
-use ash::khr::swapchain;
 use ash::vk;
 use ash::vk::*;
 use glam::Mat4;
 use mte_macros::vfs_include_vk_shader;
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::builder::VkBuilder;
-use crate::renderer::block_grid_renderer::backend::vulkan_backend::renderer::{RenderData, VkBackend};
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::renderer::{
+    RenderData, VkBackend
+};
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::buffer_vk::VkBufferDataHV;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::descriptors::Descriptors;
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::game_buffer_manager::{
@@ -243,7 +244,7 @@ impl VkInGameData {
         let device = &renderer.device;
         let mem_properties = &renderer.memory_prop;
         let current_cmd = renderer.get_current_cmd();
-        
+
         self.hand_mat = matrix;
         let handle = self
             .buffer_manager
@@ -272,10 +273,10 @@ impl VkInGameData {
     }
 }
 
-
 impl RenderData for VkInGameData {
     fn prepare_buffers(&mut self, renderer: &VkBackend) {
-        self.buffer_manager.prepare_buffers(&renderer.device, renderer.get_current_cmd());
+        self.buffer_manager
+            .prepare_buffers(&renderer.device, renderer.get_current_cmd());
     }
 
     fn draw(&self, renderer: &VkBackend) {

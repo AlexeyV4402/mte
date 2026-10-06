@@ -3,7 +3,9 @@ use ash::vk::*;
 use mte_macros::vfs_include_vk_shader;
 
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::builder::VkBuilder;
-use crate::renderer::block_grid_renderer::backend::vulkan_backend::renderer::{RenderData, VkBackend};
+use crate::renderer::block_grid_renderer::backend::vulkan_backend::renderer::{
+    RenderData, VkBackend
+};
 use crate::renderer::block_grid_renderer::backend::vulkan_backend::types::gui_buffer_manager::GuiBufferManager;
 use crate::renderer::block_grid_renderer::render_objects::primitive::GuiIndexedPrimitive;
 
@@ -49,12 +51,7 @@ impl VkGuiData {
         }
     }
 
-    pub fn load_quad(
-        &mut self,
-        renderer: &VkBackend,
-        primitive: GuiIndexedPrimitive,
-        idx: u64,
-    ) {
+    pub fn load_quad(&mut self, renderer: &VkBackend, primitive: GuiIndexedPrimitive, idx: u64) {
         self.buffer_manager
             .load_quad(primitive, idx, &renderer.device, renderer.get_current_cmd());
     }
@@ -70,7 +67,8 @@ impl VkGuiData {
 
 impl RenderData for VkGuiData {
     fn prepare_buffers(&mut self, renderer: &VkBackend) {
-        self.buffer_manager.prepare_buffers(&renderer.device, renderer.get_current_cmd());
+        self.buffer_manager
+            .prepare_buffers(&renderer.device, renderer.get_current_cmd());
     }
 
     fn draw(&self, renderer: &VkBackend) {

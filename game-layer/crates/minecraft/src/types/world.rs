@@ -5,7 +5,6 @@ use lib_core::math::vectors::vec3::core::Vector3;
 use lib_core::math::vectors::vec3::types::{Vec3f32, Vec3i32};
 use lib_io::user_io::InputState;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_data::VkInGameData;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkGameBackend;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::camera::RotatableCamera;
 use winit::event::MouseButton;
@@ -18,7 +17,7 @@ use crate::types::dimension::Dimension;
 use crate::types::item::ItemType;
 use crate::types::player_object::PlayerObject;
 use crate::utils::raycast::raycast;
-use crate::utils::save_manager::SaveManager;
+use crate::utils::save_manager::dimension_manager::DimensionManager;
 use crate::utils::world_generator::WorldGenerator;
 
 pub enum PhysicsEvent {
@@ -32,7 +31,7 @@ pub struct World<G: WorldGenerator> {
     prev_player_chunk: Vector3<i32>,
     render_radius: i32,
     storage_radius: i32,
-    overworld_save_manager: SaveManager,
+    overworld_dimension_manager: DimensionManager,
     physics_world: PhysicsWorld,
     event_queue: Vec<PhysicsEvent>,
 }
@@ -54,7 +53,7 @@ impl<G: WorldGenerator> World<G> {
             prev_player_chunk: Vector3::new(0, 0, 0),
             render_radius: BASE_RENDER_RADIUS,
             storage_radius: BASE_RENDER_RADIUS + 1,
-            overworld_save_manager: SaveManager::new(
+            overworld_dimension_manager: DimensionManager::new(
                 ChunkCoords::from(player_coords.chunk).get_region(),
             ),
             physics_world: PhysicsWorld::default(),
@@ -64,7 +63,7 @@ impl<G: WorldGenerator> World<G> {
 
     pub fn init(&mut self) {
         let player_start_chunk = self.player_object.get_position().normalized().chunk;
-        self.overworld_save_manager
+        self.overworld_dimension_manager
             .shift_center(ChunkCoords::from(player_start_chunk).get_region());
         process_cube(
             |coords| {
@@ -101,7 +100,8 @@ impl<G: WorldGenerator> World<G> {
             self.update_chunks_state(new_player_chunk);
             let prev_player_region = ChunkCoords::from(self.prev_player_chunk).get_region();
             if ChunkCoords::from(new_player_chunk).get_region() != prev_player_region {
-                self.overworld_save_manager.shift_center(prev_player_region);
+                self.overworld_dimension_manager
+                    .shift_center(prev_player_region);
             }
         }
         self.prev_player_chunk = new_player_chunk;
@@ -122,7 +122,8 @@ impl<G: WorldGenerator> World<G> {
         if input_state.is_just_pressed(KeyCode::F4) {
             let chunk_coords = ChunkCoords::from(player_chunk);
             self.unload_chunk(chunk_coords);
-            self.overworld.save_chunks(&mut self.overworld_save_manager);
+            self.overworld
+                .save_chunks(&mut self.overworld_dimension_manager);
             self.prepare_chunk(chunk_coords);
             println!("Перезагрузка чанка");
         }
@@ -198,11 +199,13 @@ impl<G: WorldGenerator> World<G> {
 
     pub fn update_meshes(&mut self, renderer_data: &mut VkInGameData, renderer: &VkBackend) {
         self.overworld
-            .prepare_chunks(&self.overworld_generator, &self.overworld_save_manager);
-        self.overworld.save_chunks(&mut self.overworld_save_manager);
+            .prepare_chunks(&self.overworld_generator, &self.overworld_dimension_manager);
+        self.overworld
+            .save_chunks(&mut self.overworld_dimension_manager);
 
         self.overworld.update_chunk_meshes(renderer_data, renderer);
-        self.player_object.update_inventory_meshes(renderer_data, renderer);
+        self.player_object
+            .update_inventory_meshes(renderer_data, renderer);
         self.physics_world.update_meshes(renderer_data, renderer);
     }
 
