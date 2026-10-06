@@ -2,18 +2,20 @@ use std::ops::Div;
 
 use glam::Vec2;
 use lib_io::user_io::InputState;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkGameBackend;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::gui_data::VkGuiData;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::gui_renderer::VkGuiBackend;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkBackend;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::GuiIndexedPrimitive;
 use lib_renderer::renderer::block_grid_renderer::types::vertex::GuiVertex;
 
-enum GuiEvent {
+use crate::state_manager::GlobalEvent;
 
-}
+enum GuiEvent {}
 
 pub struct MainMenu {
     elements: [GuiElement; 3],
-    event_queue: Vec<GuiEvent>
+    event_queue: Vec<GuiEvent>,
 }
 
 impl MainMenu {
@@ -49,17 +51,16 @@ impl MainMenu {
                 ),
             ],
             event_queue: Vec::new(),
-            
         }
     }
 
-    pub fn update_meshes(&self, renderer: &mut VkGuiBackend) {
+    pub fn update_meshes(&self, renderer_data: &mut VkGuiData, renderer: &VkBackend) {
         self.elements.iter().enumerate().for_each(|(idx, element)| {
-            renderer.load_quad(element.get_mesh(), idx as u64);
+            renderer_data.load_quad(renderer, element.get_mesh(), idx as u64);
         });
     }
 
-    pub fn update(&mut self, input_state: &InputState, screen_size: Vec2) {
+    pub fn update(&mut self, input_state: &InputState, global_event_queue: &mut Vec<GlobalEvent>, screen_size: Vec2) {
         let normalized_mouse = input_state.mouse_pos.div(screen_size);
 
         // 2. Переводим в NDC Vulkan: [0.0; 1.0] -> [-1.0; 1.0]
@@ -78,7 +79,8 @@ impl MainMenu {
                         && mouse_pos.y > element.pos_min.y
                     {
                         if input_state.is_mouse_down(winit::event::MouseButton::Left) {
-                            element.vidget_state = VidgetState::Down
+                            element.vidget_state = VidgetState::Down;
+                            global_event_queue.push(GlobalEvent::StartGame);
                         } else {
                             element.vidget_state = VidgetState::Hover
                         }

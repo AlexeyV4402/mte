@@ -48,6 +48,13 @@ impl VkBufferDataHV {
             mapped_ptr,
         }
     }
+
+    pub fn destroy(self, device: &ash::Device) {
+        unsafe {
+            device.destroy_buffer(self.buffer, None);
+            device.free_memory(self.mem, None);
+        }
+    }
 }
 
 pub struct VkBufferDataDL {

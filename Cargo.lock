@@ -1876,6 +1876,7 @@ name = "minecraft"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ash",
  "bincode",
  "bitcode",
  "bytemuck",

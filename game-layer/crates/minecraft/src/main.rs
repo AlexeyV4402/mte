@@ -7,6 +7,8 @@ mod config;
 mod gui;
 mod network;
 mod physics_world;
+mod state_manager;
+mod states;
 mod types;
 mod utils;
 

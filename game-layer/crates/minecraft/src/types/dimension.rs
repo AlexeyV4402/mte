@@ -1,6 +1,7 @@
 use std::mem;
 
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkBackend;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_data::VkInGameData;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::primitive::BlockIndexedPrimitive;
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
@@ -121,7 +122,7 @@ impl Dimension {
         }
     }
 
-    pub fn update_chunk_meshes(&mut self, renderer: &mut VkBackend) {
+    pub fn update_chunk_meshes(&mut self, renderer_data: &mut VkInGameData, renderer: &VkBackend) {
         if self.show_queue.len() > 0 {
             let mut queue = mem::replace(&mut self.show_queue, Vec::with_capacity(32));
             queue.drain(..).for_each(|dirty_chunk_coords| {
@@ -129,11 +130,11 @@ impl Dimension {
 
                 if let Some(chunk) = self.get_chunk_mut(dirty_chunk_coords) {
                     if let Some(old_id) = chunk.vram_slot_id {
-                        renderer.unload_chunk(old_id);
+                        renderer_data.unload_chunk(old_id);
                     }
 
-                    let id = renderer
-                        .load_chunk(chunk_mesh, dirty_chunk_coords.0.to_vec4_left().to_array());
+                    let id = renderer_data
+                        .load_chunk(renderer, chunk_mesh, dirty_chunk_coords.0.to_vec4_left().to_array());
                     chunk.vram_slot_id = id;
                 }
             });
@@ -142,7 +143,7 @@ impl Dimension {
         queue.drain(..).for_each(|dirty_chunk_coords| {
             if let Some(chunk) = self.get_chunk_mut(dirty_chunk_coords) {
                 if let Some(old_id) = chunk.vram_slot_id {
-                    renderer.unload_chunk(old_id);
+                    renderer_data.unload_chunk(old_id);
                 }
                 chunk.vram_slot_id = None;
             }

@@ -5,8 +5,10 @@ use glam::{Mat4, Vec3};
 use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::core::Vector3;
 use lib_io::user_io::InputState;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_data::VkInGameData;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::types::game_buffer_manager::HandGpuHandle;
-use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkBackend;
+use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_renderer::VkGameBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::camera::{
     RotatableCamera, WorldCameraUniform
 };
@@ -161,10 +163,10 @@ impl PlayerObject {
             .get_world_uniform(self.get_camera_position())
     }
 
-    pub fn update_inventory_meshes(&mut self, renderer: &mut VkBackend) {
+    pub fn update_inventory_meshes(&mut self, renderer_data: &mut VkInGameData, renderer: &VkBackend) {
         if self.hand_dirty {
             if let Some(data) = self.hand_gpu_handle {
-                renderer.unload_hand(data);
+                renderer_data.unload_hand(data);
             }
 
             let hand_offset = Vec3::new(0.2, -0.4, 1.5);
@@ -181,7 +183,8 @@ impl PlayerObject {
 
             // println!("Матрица модели: {}", final_hand_model);
 
-            renderer.load_hand(
+            renderer_data.load_hand(
+                renderer,
                 self.hand_item.item_type.get_hand_model(),
                 (self.camera.lens.get_proj_mat() * final_hand_model).to_cols_array_2d(),
                 // Mat4::IDENTITY.to_cols_array_2d()

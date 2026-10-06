@@ -218,6 +218,16 @@ impl GuiBufferManager {
 
         self.cpu_staging_buffer.clear();
     }
+
+    pub fn destroy(self, device: &ash::Device) {
+        self.gpu_indirect_buffer.destroy(device);
+        self.gpu_staging_buffer.destroy(device);
+        self.index_buffer.destroy(device);
+        self.vertex_buffer.destroy(device);
+        drop(self.cpu_staging_queue);
+        drop(self.cpu_staging_buffer);
+        drop(self.cpu_indirect_buffer);
+    }
 }
 
 #[derive(Clone, Copy)]
