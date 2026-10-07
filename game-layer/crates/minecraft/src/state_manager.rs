@@ -1,6 +1,6 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use chrono::Timelike;
+use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
 use glam::Vec2;
 use lib_core::math::vectors::custom::PrecisePositionC32;
 use lib_core::math::vectors::vec3::types::{Vec3f32, Vec3i32};
@@ -9,6 +9,7 @@ use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::game_d
 use lib_renderer::renderer::block_grid_renderer::backend::vulkan_backend::renderer::VkBackend;
 use lib_renderer::renderer::block_grid_renderer::render_objects::camera::RotatableLens;
 use lib_renderer::renderer::block_grid_renderer::types::RendererCreateArgs;
+use mte_macros::vpath_unchecked;
 use winit::dpi::PhysicalSize;
 
 use crate::states::in_game::InGameState;
@@ -75,10 +76,8 @@ impl StateManager {
             data_create_args,
         );
 
-        let datetime = chrono::NaiveDateTime::MIN;
-
-        // let seed = datetime.nanosecond() % 100;
-        let seed = 32;
+        let seed = Utc::now().nanosecond() % 10000;
+        // let seed = 32;
 
         let world_header = WorldHeader {
             name: format!("{}", seed),
@@ -91,7 +90,13 @@ impl StateManager {
             )
             .normalized(),
         };
-        let mut world: World<SuperSimplexGenerator> = World::new(seed);
+
+        let mut world: World<SuperSimplexGenerator> = World::new(
+            seed,
+            vpath_unchecked!("data://saves").join(world_header.name.clone()),
+        );
+
+        self.save_manager.save_world_data(world_header);
 
         world.init();
 

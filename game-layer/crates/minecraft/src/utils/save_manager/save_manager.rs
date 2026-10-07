@@ -45,18 +45,18 @@ impl SaveManager {
     pub fn save_world_data(&self, header: WorldHeader) {
         let saves_path = vpath_unchecked!("data://saves/");
         if !saves_path.exists() {
-            let _ = fs::create_dir_all(saves_path);
-            return;
+            fs::create_dir_all(&saves_path).unwrap();
         }
 
-        let overworld_path = saves_path.join("dimensions").join("overworld");
+        let world_save_path = saves_path.join(header.name.clone());
+
+        let overworld_path = world_save_path.join("dimensions").join("overworld");
 
         if !overworld_path.exists() {
-            let _ = fs::create_dir_all(overworld_path);
-            return;
+            fs::create_dir_all(overworld_path).unwrap();
         }
 
-        let file_path = saves_path.join(header.name.clone());
+        let file_path = world_save_path.join("world.data");
 
         let bytes = match bincode::serialize(&header) {
             Ok(b) => b,

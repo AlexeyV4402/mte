@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use lib_core::math::vectors::custom::PrecisePositionC32;
@@ -39,7 +40,7 @@ pub struct World<G: WorldGenerator> {
 pub const BASE_RENDER_RADIUS: i32 = 1;
 
 impl<G: WorldGenerator> World<G> {
-    pub fn new(seed: u32) -> Self {
+    pub fn new(seed: u32, dir: PathBuf) -> Self {
         let player_coords =
             PrecisePositionC32::raw_new(Vec3i32::new(0, 0, 0), Vec3f32::new(0.0, 128.0, 0.0))
                 .normalized();
@@ -55,6 +56,7 @@ impl<G: WorldGenerator> World<G> {
             storage_radius: BASE_RENDER_RADIUS + 1,
             overworld_dimension_manager: DimensionManager::new(
                 ChunkCoords::from(player_coords.chunk).get_region(),
+                dir.join("dimensions").join("overworld"),
             ),
             physics_world: PhysicsWorld::default(),
             event_queue: Default::default(),

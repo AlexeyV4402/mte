@@ -46,6 +46,7 @@ impl Default for RegionData {
 }
 
 pub struct DimensionManager {
+    dimension_dir: PathBuf,
     regions: FxHashMap<RegionCoords, RegionData>,
     current_center: RegionCoords,
 }
@@ -58,10 +59,11 @@ impl DimensionManager {
     pub const HEADER_SECTORS_U32: u32 = Self::HEADER_SECTORS_USIZE as u32;
     pub const HEADER_SIZE_ALIGNED: usize = Self::HEADER_SECTORS_USIZE * Self::SECTOR_SIZE;
 
-    pub fn new(current_center: RegionCoords) -> Self {
+    pub fn new(current_center: RegionCoords, dimension_dir: PathBuf) -> Self {
         let mut new = Self {
             regions: Default::default(),
             current_center,
+            dimension_dir: dimension_dir.clone(),
         };
 
         let delta = Vector3::new(1, 1, 1);
@@ -72,13 +74,12 @@ impl DimensionManager {
             for y in old_min.y..=old_max.y {
                 for z in old_min.z..=old_max.z {
                     let coords = RegionCoords::new(x, y, z);
-                    let save_dir: PathBuf = vpath!("data://");
                     let region_coords = coords;
                     let file_name = format!(
                         "{}.{}.{}.rd",
                         region_coords.0.x, region_coords.0.y, region_coords.0.z
                     );
-                    let file_path = save_dir.join(file_name);
+                    let file_path = dimension_dir.join(file_name);
 
                     let mut file = match File::open(&file_path) {
                         Ok(f) => f,
@@ -120,12 +121,11 @@ impl DimensionManager {
         let results: Vec<Vec<(ChunkCoords, Option<Chunk>)>> = regions_batch
             .into_par_iter()
             .map(|(region_coords, chunks_vec)| {
-                let save_dir: PathBuf = vpath!("data://");
                 let file_name = format!(
                     "{}.{}.{}.rd",
                     region_coords.0.x, region_coords.0.y, region_coords.0.z
                 );
-                let file_path = save_dir.join(file_name);
+                let file_path = self.dimension_dir.join(file_name);
 
                 let mut file = match File::open(&file_path) {
                     Ok(f) => f,
@@ -238,13 +238,12 @@ impl DimensionManager {
                         && z <= new_max.z;
 
                     if !in_old && in_new {
-                        let save_dir: PathBuf = vpath!("data://");
                         let region_coords = coords;
                         let file_name = format!(
                             "{}.{}.{}.rd",
                             region_coords.0.x, region_coords.0.y, region_coords.0.z
                         );
-                        let file_path = save_dir.join(file_name);
+                        let file_path = self.dimension_dir.join(file_name);
 
                         let mut file = match File::open(&file_path) {
                             Ok(f) => f,
@@ -302,14 +301,13 @@ impl DimensionManager {
         }
 
         par_tasks
-            .into_iter()
+            .into_par_iter()
             .for_each(|(region_coords, chunks_vec, cached_region)| {
-                let save_dir: PathBuf = vpath!("data://");
                 let file_name = format!(
                     "{}.{}.{}.rd",
                     region_coords.0.x, region_coords.0.y, region_coords.0.z
                 );
-                let file_path = save_dir.join(file_name);
+                let file_path = self.dimension_dir.join(file_name);
 
                 let mut file = if let Ok(f) = OpenOptions::new()
                     .create(true)
